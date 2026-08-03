@@ -17,6 +17,29 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
+    - name: Verify Visual Studio 2022 C++ capability
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+
+        Write-Host "ImageOS=$env:ImageOS"
+        Write-Host "ImageVersion=$env:ImageVersion"
+        Write-Host "Windows=$((Get-CimInstance Win32_OperatingSystem).Caption) $((Get-CimInstance Win32_OperatingSystem).Version)"
+
+        if (-not (Test-Path -LiteralPath $vswhere)) {
+          throw "vswhere was not found at $vswhere"
+        }
+
+        Write-Host "vswhere=$((Get-Item -LiteralPath $vswhere).VersionInfo.ProductVersion)"
+        cmake --version
+
+        $vs2022 = @(& $vswhere -products * -version "[17.0,18.0)" -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath)
+        if ($vs2022.Count -eq 0) {
+          throw "Visual Studio 2022 with Microsoft.VisualStudio.Component.VC.Tools.x86.x64 is required."
+        }
+
+        $vs2022 | ForEach-Object { Write-Host "VisualStudio2022=$_" }
     - name: setup
       run: |
         cd ../..
