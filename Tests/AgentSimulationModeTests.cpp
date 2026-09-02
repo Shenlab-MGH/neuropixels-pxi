@@ -34,6 +34,21 @@ int main()
     expectTrue (! plan.supportsOneBox, "simulation build fails closed for OneBox source");
     expectTrue (plan.supportsHeadlessLifecycle,
                 "simulation build supports editor-free lifecycle and preset apply");
+    expectTrue (! neuropix::agent::canStartAcquisition (
+                    plan, false, false, false),
+                "headless simulation cannot acquire before initialization");
+    expectTrue (! neuropix::agent::canStartAcquisition (
+                    plan, false, true, false),
+                "headless simulation cannot acquire before configuration");
+    expectTrue (neuropix::agent::canStartAcquisition (
+                    plan, false, true, true),
+                "ready headless simulation can acquire without an editor");
+    expectTrue (neuropix::agent::canApplyPresetSynchronously (
+                    plan, false, true),
+                "idle headless simulation can synchronously apply a preset");
+    expectTrue (! neuropix::agent::canApplyPresetSynchronously (
+                    plan, false, false),
+                "headless simulation rejects preset apply when the queue is busy");
     expectTrue (std::string (plan.probePartNumber) == "NP2013",
                 "simulation build creates an NP2 four-shank probe");
     expectTrue (plan.probeSerialNumber == 2000024001,
@@ -48,6 +63,12 @@ int main()
                 "production build retains probe configuration modal");
     expectTrue (! plan.supportsHeadlessLifecycle,
                 "production build does not claim editor-free hardware control");
+    expectTrue (! neuropix::agent::canStartAcquisition (
+                    plan, false, true, true),
+                "production build fails closed when no editor exists");
+    expectTrue (! neuropix::agent::canApplyPresetSynchronously (
+                    plan, false, true),
+                "production build cannot synchronously apply hardware settings headlessly");
 #endif
 
     if (failures != 0)

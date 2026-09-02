@@ -32,4 +32,23 @@ constexpr SimulationBuildPlan simulationBuildPlan() noexcept
              nullptr, 0, 0, 0, 0 };
 #endif
 }
+
+constexpr bool canStartAcquisition (const SimulationBuildPlan& plan,
+                                    bool editorAvailable,
+                                    bool initializationComplete,
+                                    bool configurationComplete) noexcept
+{
+    return (editorAvailable || plan.supportsHeadlessLifecycle)
+           && initializationComplete
+           && configurationComplete;
+}
+
+constexpr bool canApplyPresetSynchronously (const SimulationBuildPlan& plan,
+                                            bool editorAvailable,
+                                            bool settingsQueueEmpty) noexcept
+{
+    return ! editorAvailable
+           && plan.supportsHeadlessLifecycle
+           && settingsQueueEmpty;
+}
 }

@@ -828,6 +828,10 @@ void NeuropixThread::initialize (bool signalChainIsLoading)
             updateProbeSettingsQueue (ProbeSettings (probe->settings));
         applyProbeSettingsQueue();
     }
+    else
+    {
+        LOGE ("Refusing editor-free Neuropixels initialization in a production build.");
+    }
 }
 
 bool NeuropixThread::isReady()
@@ -1137,6 +1141,17 @@ String NeuropixThread::getInfoString()
 /** Initializes data transfer.*/
 bool NeuropixThread::startAcquisition()
 {
+    constexpr auto simulationPlan = neuropix::agent::simulationBuildPlan();
+    if (! neuropix::agent::canStartAcquisition (
+            simulationPlan,
+            editor != nullptr,
+            initializationComplete,
+            configurationComplete))
+    {
+        LOGE ("Refusing Neuropixels acquisition before the lifecycle is ready or without a production editor.");
+        return false;
+    }
+
     if (editor != nullptr && editor->uiLoader != nullptr
         && editor->uiLoader->isThreadRunning())
     {
@@ -2011,6 +2026,18 @@ String NeuropixThread::handleAgentPresetMessage (const String& jsonMessage)
     const auto* beforePreset = selectedPreset (before);
     const bool changed = beforePreset == nullptr || beforePreset->presetId != requestedPresetId;
 
+    constexpr auto simulationPlan = neuropix::agent::simulationBuildPlan();
+    if (changed && editor == nullptr)
+    {
+        const bool settingsQueueEmpty = probeSettingsUpdateQueue.isEmpty()
+                                        && probeSettingsUpdateEpochQueue.isEmpty();
+        if (! simulationPlan.supportsHeadlessLifecycle)
+            return agentError ("capability_unavailable", "Background settings worker is unavailable.");
+        if (! neuropix::agent::canApplyPresetSynchronously (
+                simulationPlan, false, settingsQueueEmpty))
+            return agentError ("preset_apply_in_progress", "Background settings queue is busy.");
+    }
+
     if (! agentPresetHardwareOperation.tryBeginApply())
         return agentError ("preset_apply_in_progress",
                            "Neuropixels hardware operation is already running.");
@@ -2047,16 +2074,18 @@ String NeuropixThread::handleAgentPresetMessage (const String& jsonMessage)
             updated.selectedElectrode.add (metadata->global_index);
         }
 
-        constexpr auto simulationPlan = neuropix::agent::simulationBuildPlan();
         if (editor == nullptr)
         {
-            if constexpr (! simulationPlan.supportsHeadlessLifecycle)
-                return agentError ("capability_unavailable", "Background settings worker is unavailable.");
-
             configurationComplete = false;
             updateProbeSettingsQueue (updated);
             applyGateRelease.release = false;
             applyProbeSettingsQueue();
+            if (! configurationComplete
+                || ! probeSettingsUpdateQueue.isEmpty()
+                || ! probeSettingsUpdateEpochQueue.isEmpty()
+                || agentPresetHardwareOperation.applyInProgress()
+                || targetProbe->errorCode != Neuropixels::SUCCESS)
+                return agentError ("preset_apply_failed", "Synchronous simulated preset apply did not complete successfully.");
             return String (serializeAgentAccepted (
                 "neuropix-preset-" + std::to_string (++agentPresetOperationCounter)));
         }
