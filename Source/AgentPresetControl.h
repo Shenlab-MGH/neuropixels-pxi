@@ -72,6 +72,8 @@ std::string stableCommittedStateKey (const ProbeIdentity& probe);
 std::string canonicalElectrodeMapHash (const ElectrodeMap& map);
 std::string controlModeToString (ControlMode mode);
 std::string serializePresetInventory (const PresetInventory& inventory);
+std::string serializeAgentSuccess (const std::string& resultObjectJson);
+std::string serializeAgentAccepted (const std::string& operationId);
 std::string serializePresetInventory (const std::vector<PresetInventory>& inventories,
                                       const std::string& inventoryGeneration);
 std::string presetInventoryGeneration (const std::vector<PresetInventory>& inventories);

@@ -112,6 +112,12 @@ int main()
                 "inventory publishes probe identity");
     expectTrue (json.find ("\"electrode_map_hash\":\"sha256:") != std::string::npos,
                 "inventory publishes current map hash");
+    expectEqual (serializeAgentSuccess ("{\"inventory_generation\":\"g1\",\"targets\":[]}"),
+                 "{\"ok\":true,\"result\":{\"inventory_generation\":\"g1\",\"targets\":[]}}",
+                 "success wrapper has exact core envelope and no extra keys");
+    expectEqual (serializeAgentAccepted ("neuropix-preset-9"),
+                 "{\"ok\":true,\"accepted\":true,\"operation_id\":\"neuropix-preset-9\"}",
+                 "set no-op and write dispatch share exact accepted envelope");
 
     auto switched = inventory;
     switched.currentMap = bankB;

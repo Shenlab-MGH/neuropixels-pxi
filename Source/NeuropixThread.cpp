@@ -1824,7 +1824,8 @@ String NeuropixThread::handleAgentPresetMessage (const String& jsonMessage)
     {
         if (! hasExactProperties (*payload, {}))
             return agentError ("invalid_arguments", "Inventory payload must be empty.");
-        return String (serializePresetInventory (inventories, generation));
+        return String (serializeAgentSuccess (
+            serializePresetInventory (inventories, generation)));
     }
 
     if (operation != "set")
@@ -1933,37 +1934,15 @@ String NeuropixThread::handleAgentPresetMessage (const String& jsonMessage)
             return agentError ("preset_apply_failed", "Background settings worker did not start; no write was dispatched.");
         }
 
-        DynamicObject::Ptr accepted = new DynamicObject();
-        accepted->setProperty ("ok", true);
-        accepted->setProperty ("accepted", true);
-        accepted->setProperty ("operation_id", "neuropix-preset-" + String (++agentPresetOperationCounter));
-        return JSON::toString (var (accepted.get()), true);
+        return String (serializeAgentAccepted (
+            "neuropix-preset-" + std::to_string (++agentPresetOperationCounter)));
     }
 
-    auto after = presetInventoryForProbe (*targetProbe, processorId);
-    const auto* afterPreset = selectedPreset (after);
-    if (afterPreset == nullptr || afterPreset->presetId != requestedPresetId
-        || canonicalElectrodeMapHash (after.currentMap) != decision.targetMapHash)
-        return agentError ("postcondition_failed", "Independent readback does not match requested preset.");
-
-    auto readback = [] (const PresetInventory& value, const Preset* preset) -> var
-    {
-        DynamicObject::Ptr object = new DynamicObject();
-        object->setProperty ("processor_id", value.processorId);
-        object->setProperty ("probe_id", String (value.probeId));
-        object->setProperty ("probe_serial", String (value.probe.serialNumber));
-        object->setProperty ("preset_id", preset == nullptr ? var() : var (preset->presetId));
-        object->setProperty ("preset_label", preset == nullptr ? var() : var (preset->label));
-        object->setProperty ("electrode_map_hash", String (canonicalElectrodeMapHash (value.currentMap)));
-        return var (object.get());
-    };
-
-    DynamicObject::Ptr response = new DynamicObject();
-    response->setProperty ("changed", changed);
-    response->setProperty ("before", readback (before, beforePreset));
-    response->setProperty ("requested", var (payload));
-    response->setProperty ("after", readback (after, afterPreset));
-    return JSON::toString (var (response.get()), true);
+    // A concurrent actor may already have selected the requested preset after
+    // the core's pre-read. Treat it as accepted without dispatch; the core's
+    // independent authoritative GET will classify convergence.
+    return String (serializeAgentAccepted (
+        "neuropix-preset-" + std::to_string (++agentPresetOperationCounter)));
 }
 
 String NeuropixThread::getCustomProbeName (String serialNumber)

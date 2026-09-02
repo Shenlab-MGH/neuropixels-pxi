@@ -254,6 +254,23 @@ std::string serializePresetInventory (const PresetInventory& inventory)
                                      inventory.inventoryGeneration);
 }
 
+std::string serializeAgentSuccess (const std::string& resultObjectJson)
+{
+    if (resultObjectJson.size() < 2
+        || resultObjectJson.front() != '{'
+        || resultObjectJson.back() != '}')
+        return {};
+    return "{\"ok\":true,\"result\":" + resultObjectJson + '}';
+}
+
+std::string serializeAgentAccepted (const std::string& operationId)
+{
+    if (operationId.empty())
+        return {};
+    return "{\"ok\":true,\"accepted\":true,\"operation_id\":\""
+           + escapeJson (operationId) + "\"}";
+}
+
 std::string presetInventoryGeneration (const std::vector<PresetInventory>& inventories)
 {
     std::ostringstream output;
