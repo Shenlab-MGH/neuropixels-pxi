@@ -26,9 +26,11 @@
 
 #include <DataThreadHeaders.h>
 #include <stdio.h>
+#include <atomic>
 #include <string.h>
 
 #include "NeuropixComponents.h"
+#include "AgentPresetControl.h"
 
 #define PLUGIN_VERSION "2.1.1"
 
@@ -200,6 +202,9 @@ public:
     /** Returns a JSON-formatted string with info about all connected probes*/
     String getProbeInfoString();
 
+    /** Handles the closed, versioned Neuropixels preset agent envelope. */
+    String handleAgentPresetMessage (const String& jsonMessage);
+
     /** Returns pointer to active DataSources (probes + ADCs)*/
     Array<DataSource*> getDataSources();
 
@@ -272,6 +277,11 @@ private:
 
     bool initializationComplete;
     bool configurationComplete;
+
+    CriticalSection agentPresetStateMutex;
+    std::map<std::string, neuropix::agent::ElectrodeMap> agentCommittedPresetMaps;
+    std::atomic_bool agentPresetApplyInProgress { false };
+    uint64 agentPresetOperationCounter = 0;
 
     long int counter;
 

@@ -291,15 +291,23 @@ void Neuropixels2::selectElectrodes()
     if (settings.selectedBank.size() == 0)
         return;
 
+    Neuropixels::NP_ErrorCode firstError = Neuropixels::SUCCESS;
+
     for (int ch = 0; ch < settings.selectedChannel.size(); ch++)
     {
-        checkError(Neuropixels::selectElectrode (basestation->slot,
-                                           headstage->port,
-                                           dock,
-                                           settings.selectedChannel[ch],
-                                           settings.selectedShank[ch],
-                                           settings.availableBanks.indexOf (settings.selectedBank[ch])), "selectElectrode");
+        const auto result = checkError (Neuropixels::selectElectrode (
+            basestation->slot,
+            headstage->port,
+            dock,
+            settings.selectedChannel[ch],
+            settings.selectedShank[ch],
+            settings.availableBanks.indexOf (settings.selectedBank[ch])),
+            "selectElectrode");
+        if (firstError == Neuropixels::SUCCESS && result != Neuropixels::SUCCESS)
+            firstError = result;
     }
+
+    errorCode = firstError;
 
     LOGD ("Updated electrode settings for slot: ", basestation->slot, " port: ", headstage->port, " dock: ", dock);
 }
