@@ -32,6 +32,8 @@ int main()
                 "simulation build skips probe configuration modal");
     expectTrue (plan.supportsPxi, "simulation build supports PXI source");
     expectTrue (! plan.supportsOneBox, "simulation build fails closed for OneBox source");
+    expectTrue (plan.supportsHeadlessLifecycle,
+                "simulation build supports editor-free lifecycle and preset apply");
     expectTrue (std::string (plan.probePartNumber) == "NP2013",
                 "simulation build creates an NP2 four-shank probe");
     expectTrue (plan.probeSerialNumber == 2000024001,
@@ -44,6 +46,8 @@ int main()
     expectTrue (plan.showNoDevicePrompt, "production build retains no-device modal");
     expectTrue (plan.showProbeConfigurationDialog,
                 "production build retains probe configuration modal");
+    expectTrue (! plan.supportsHeadlessLifecycle,
+                "production build does not claim editor-free hardware control");
 #endif
 
     if (failures != 0)

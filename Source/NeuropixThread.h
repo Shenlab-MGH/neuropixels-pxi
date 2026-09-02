@@ -314,7 +314,7 @@ private:
 
     NeuropixAPIv3 api_v3;
 
-    NeuropixEditor* editor; 
+    NeuropixEditor* editor = nullptr;
 };
 
 #endif // __NEUROPIXTHREAD_H_2C4CBD67__

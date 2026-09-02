@@ -652,7 +652,8 @@ NeuropixThread::~NeuropixThread()
 {
     LOGD ("NeuropixThread destructor.");
 
-    editor->uiLoader->waitForThreadToExit (-1);
+    if (editor != nullptr && editor->uiLoader != nullptr)
+        editor->uiLoader->waitForThreadToExit (-1);
 
     closeConnection();
 }
@@ -811,7 +812,22 @@ void NeuropixThread::applyProbeSettingsQueue()
 
 void NeuropixThread::initialize (bool signalChainIsLoading)
 {
-    editor->initialize (signalChainIsLoading);
+    if (editor != nullptr)
+    {
+        editor->initialize (signalChainIsLoading);
+        return;
+    }
+
+    constexpr auto simulationPlan = neuropix::agent::simulationBuildPlan();
+    if constexpr (simulationPlan.supportsHeadlessLifecycle)
+    {
+        if (! initializationComplete)
+            initializeBasestations (signalChainIsLoading);
+
+        for (auto probe : getProbes())
+            updateProbeSettingsQueue (ProbeSettings (probe->settings));
+        applyProbeSettingsQueue();
+    }
 }
 
 bool NeuropixThread::isReady()
@@ -1121,7 +1137,8 @@ String NeuropixThread::getInfoString()
 /** Initializes data transfer.*/
 bool NeuropixThread::startAcquisition()
 {
-    if (editor->uiLoader->isThreadRunning())
+    if (editor != nullptr && editor->uiLoader != nullptr
+        && editor->uiLoader->isThreadRunning())
     {
         LOGD ("Waiting for Neuropixels settings thread to exit.");
         editor->uiLoader->waitForThreadToExit (20000);
@@ -1560,7 +1577,8 @@ void NeuropixThread::updateSettings (OwnedArray<ContinuousChannel>* continuousCh
 
     } // end source stream loop
 
-    editor->update();
+    if (editor != nullptr)
+        editor->update();
 }
 
 void NeuropixThread::sendSyncAsContinuousChannel (bool shouldSend)
@@ -2010,9 +2028,6 @@ String NeuropixThread::handleAgentPresetMessage (const String& jsonMessage)
     Probe* targetProbe = probes[static_cast<int> (*sourceResolution.sourceIndex)];
     if (changed)
     {
-        if (editor == nullptr || editor->uiLoader == nullptr)
-            return agentError ("capability_unavailable", "Background settings worker is unavailable.");
-
         ProbeSettings updated = targetProbe->settings;
         updated.clearElectrodeSelection();
         for (const auto& site : decision.target->electrodeMap)
@@ -2031,6 +2046,23 @@ String NeuropixThread::handleAgentPresetMessage (const String& jsonMessage)
             updated.selectedShank.add (metadata->shank);
             updated.selectedElectrode.add (metadata->global_index);
         }
+
+        constexpr auto simulationPlan = neuropix::agent::simulationBuildPlan();
+        if (editor == nullptr)
+        {
+            if constexpr (! simulationPlan.supportsHeadlessLifecycle)
+                return agentError ("capability_unavailable", "Background settings worker is unavailable.");
+
+            configurationComplete = false;
+            updateProbeSettingsQueue (updated);
+            applyGateRelease.release = false;
+            applyProbeSettingsQueue();
+            return String (serializeAgentAccepted (
+                "neuropix-preset-" + std::to_string (++agentPresetOperationCounter)));
+        }
+
+        if (editor->uiLoader == nullptr)
+            return agentError ("capability_unavailable", "Background settings worker is unavailable.");
 
         if (editor->uiLoader->isThreadRunning() || ! probeSettingsUpdateQueue.isEmpty())
             return agentError ("preset_apply_in_progress", "Background settings worker is busy.");
