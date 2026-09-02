@@ -450,6 +450,10 @@ BackgroundLoaderWithProgressWindow::BackgroundLoaderWithProgressWindow (Neuropix
 
 void BackgroundLoaderWithProgressWindow::updateProbeMap()
 {
+    // close/open below creates a new hardware connection epoch. Any prior
+    // SDK acknowledgment must not survive even when locator and serial match.
+    thread->invalidateAgentPresetConnectionEpoch();
+
     std::map<std::tuple<int, int, int>, std::pair<uint64, ProbeSettings>> updatedMap;
 
      ProbeSettings temp;

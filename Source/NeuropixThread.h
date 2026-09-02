@@ -205,6 +205,9 @@ public:
     /** Handles the closed, versioned Neuropixels preset agent envelope. */
     String handleAgentPresetMessage (const String& jsonMessage);
 
+    /** Invalidates SDK-acknowledged preset state before hardware reopen/rescan. */
+    void invalidateAgentPresetConnectionEpoch();
+
     /** Returns pointer to active DataSources (probes + ADCs)*/
     Array<DataSource*> getDataSources();
 

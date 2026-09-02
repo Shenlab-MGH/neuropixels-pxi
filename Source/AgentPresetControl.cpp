@@ -4,6 +4,7 @@
 #include <array>
 #include <cctype>
 #include <iomanip>
+#include <set>
 #include <sstream>
 #include <tuple>
 
@@ -308,20 +309,30 @@ MutationDecision validatePresetMutation (const PresetInventory& inventory,
     return { true, "ok", targetMapHash, &*preset };
 }
 
-bool isPresetTargetPublishable (ProbeStatus status, bool supported, bool disabled)
+bool isPresetTargetPublishable (ProbeStatus status,
+                                bool valid,
+                                bool presetFamilySupported,
+                                bool disabled)
 {
-    return status == ProbeStatus::CONNECTED && supported && ! disabled;
+    const bool connectedState = status == ProbeStatus::CONNECTED
+                                || status == ProbeStatus::ACQUIRING
+                                || status == ProbeStatus::RECORDING;
+    return connectedState && valid && presetFamilySupported && ! disabled;
 }
 
-ElectrodeMap CommittedPresetStateCache::resolveOrInitialize (
-    const std::string& key,
-    const ElectrodeMap& observedSoftwareState)
+bool shouldInvalidateCommittedState (ProbeStatus status)
+{
+    return status == ProbeStatus::DISCONNECTED
+           || status == ProbeStatus::CONNECTING;
+}
+
+std::optional<ElectrodeMap> CommittedPresetStateCache::resolve (
+    const std::string& key) const
 {
     const auto existing = states.find (key);
     if (existing != states.end())
         return existing->second;
-    states[key] = observedSoftwareState;
-    return observedSoftwareState;
+    return std::nullopt;
 }
 
 void CommittedPresetStateCache::commit (const std::string& key,
@@ -330,8 +341,42 @@ void CommittedPresetStateCache::commit (const std::string& key,
     states[key] = acknowledgedState;
 }
 
-void CommittedPresetStateCache::observeUnavailable (const std::string& key)
+void CommittedPresetStateCache::observeIdentityLost (const std::string& key)
 {
     states.erase (key);
+}
+
+void CommittedPresetStateCache::observeIdentity (const ProbeIdentity& probe)
+{
+    const auto currentKey = stableCommittedStateKey (probe);
+    const auto locatorPrefix = std::to_string (probe.locator.slot) + ":"
+                               + std::to_string (probe.locator.port) + ":"
+                               + std::to_string (probe.locator.dock) + ":";
+    for (auto iterator = states.begin(); iterator != states.end();)
+    {
+        if (iterator->first != currentKey
+            && iterator->first.rfind (locatorPrefix, 0) == 0)
+            iterator = states.erase (iterator);
+        else
+            ++iterator;
+    }
+}
+
+void CommittedPresetStateCache::retainOnly (
+    const std::vector<std::string>& observedKeys)
+{
+    const std::set<std::string> retained (observedKeys.begin(), observedKeys.end());
+    for (auto iterator = states.begin(); iterator != states.end();)
+    {
+        if (retained.count (iterator->first) == 0)
+            iterator = states.erase (iterator);
+        else
+            ++iterator;
+    }
+}
+
+void CommittedPresetStateCache::invalidateConnectionEpoch()
+{
+    states.clear();
 }
 }

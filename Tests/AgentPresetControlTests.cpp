@@ -52,22 +52,54 @@ int main()
     expectTrue (stableCommittedStateKey (firstProbe)
                     != stableCommittedStateKey (replacementProbe),
                 "replacement probe at same locator cannot inherit committed state");
-    expectTrue (isPresetTargetPublishable (ProbeStatus::CONNECTED, true, false),
+    expectTrue (isPresetTargetPublishable (ProbeStatus::CONNECTED, true, true, false),
                 "only connected valid enabled probes are publishable");
-    expectTrue (! isPresetTargetPublishable (ProbeStatus::DISCONNECTED, true, false)
-                    && ! isPresetTargetPublishable (ProbeStatus::UPDATING, true, false)
-                    && ! isPresetTargetPublishable (ProbeStatus::ACQUIRING, true, false)
-                    && ! isPresetTargetPublishable (ProbeStatus::CONNECTED, false, false)
-                    && ! isPresetTargetPublishable (ProbeStatus::CONNECTED, true, true),
-                "disconnected active invalid and disabled probes are omitted");
+    expectTrue (isPresetTargetPublishable (ProbeStatus::ACQUIRING, true, true, false)
+                    && isPresetTargetPublishable (ProbeStatus::RECORDING, true, true, false),
+                "connected acquisition states remain available for read-only inventory");
+    expectTrue (! isPresetTargetPublishable (ProbeStatus::DISCONNECTED, true, true, false)
+                    && ! isPresetTargetPublishable (ProbeStatus::UPDATING, true, true, false)
+                    && ! isPresetTargetPublishable (ProbeStatus::CONNECTED, false, true, false)
+                    && ! isPresetTargetPublishable (ProbeStatus::CONNECTED, true, false, false)
+                    && ! isPresetTargetPublishable (ProbeStatus::CONNECTED, true, true, true),
+                "disconnected updating invalid and disabled probes are omitted");
 
     CommittedPresetStateCache cache;
     const auto cacheKey = stableCommittedStateKey (firstProbe);
+    expectTrue (! cache.resolve (cacheKey).has_value(),
+                "connected software settings are not published without SDK acknowledgment");
     cache.commit (cacheKey, bankA);
-    cache.observeUnavailable (cacheKey);
-    expectEqual (canonicalElectrodeMapHash (cache.resolveOrInitialize (cacheKey, bankB)),
+    expectTrue (! shouldInvalidateCommittedState (ProbeStatus::UPDATING),
+                "UPDATING omits target but retains last committed acknowledgment");
+    expectEqual (canonicalElectrodeMapHash (*cache.resolve (cacheKey)),
+                 canonicalElectrodeMapHash (bankA),
+                 "failed write desired state cannot replace committed A after UPDATING");
+    expectTrue (shouldInvalidateCommittedState (ProbeStatus::DISCONNECTED),
+                "true disconnect invalidates committed acknowledgment");
+    expectTrue (shouldInvalidateCommittedState (ProbeStatus::CONNECTING),
+                "new connection epoch invalidates prior acknowledgment");
+    cache.observeIdentityLost (cacheKey);
+    expectTrue (! cache.resolve (cacheKey).has_value(),
+                "disconnect then failed restore remains unpublished without a new SDK acknowledgment");
+
+    cache.commit (cacheKey, bankA);
+    cache.observeIdentity (replacementProbe);
+    expectTrue (! cache.resolve (cacheKey).has_value(),
+                 "replacement serial removes prior identity at the same locator");
+
+    cache.commit (cacheKey, bankA);
+    cache.retainOnly ({ stableCommittedStateKey (replacementProbe) });
+    expectTrue (! cache.resolve (cacheKey).has_value(),
+                 "identity removal from inventory removes stale committed state");
+
+    cache.commit (cacheKey, bankA);
+    cache.invalidateConnectionEpoch();
+    expectTrue (! cache.resolve (cacheKey).has_value(),
+                 "hardware refresh connection epoch cannot retain an old acknowledgment");
+    cache.commit (cacheKey, bankB);
+    expectEqual (canonicalElectrodeMapHash (*cache.resolve (cacheKey)),
                  canonicalElectrodeMapHash (bankB),
-                 "same serial reconnect initializes fresh state instead of stale acknowledged cache");
+                 "successful SDK commit is required before target publication");
 
     PresetInventory inventory;
     inventory.processorId = 100;

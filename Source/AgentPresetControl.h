@@ -4,6 +4,7 @@
 
 #include <cstdint>
 #include <map>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -80,15 +81,21 @@ std::string serializePresetInventory (const std::vector<PresetInventory>& invent
 std::string presetInventoryGeneration (const std::vector<PresetInventory>& inventories);
 MutationDecision validatePresetMutation (const PresetInventory& inventory,
                                          const PresetMutation& mutation);
-bool isPresetTargetPublishable (ProbeStatus status, bool supported, bool disabled);
+bool isPresetTargetPublishable (ProbeStatus status,
+                                bool valid,
+                                bool presetFamilySupported,
+                                bool disabled);
+bool shouldInvalidateCommittedState (ProbeStatus status);
 
 class CommittedPresetStateCache
 {
 public:
-    ElectrodeMap resolveOrInitialize (const std::string& key,
-                                      const ElectrodeMap& observedSoftwareState);
+    std::optional<ElectrodeMap> resolve (const std::string& key) const;
     void commit (const std::string& key, const ElectrodeMap& acknowledgedState);
-    void observeUnavailable (const std::string& key);
+    void observeIdentityLost (const std::string& key);
+    void observeIdentity (const ProbeIdentity& probe);
+    void retainOnly (const std::vector<std::string>& observedKeys);
+    void invalidateConnectionEpoch();
 
 private:
     std::map<std::string, ElectrodeMap> states;

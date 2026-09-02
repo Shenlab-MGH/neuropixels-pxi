@@ -1804,7 +1804,23 @@ String NeuropixThread::handleAgentPresetMessage (const String& jsonMessage)
 
     std::vector<PresetInventory> inventories;
     const int processorId = sn->getNodeId();
-    for (auto* probe : getProbes())
+    const auto probes = getProbes();
+    std::vector<std::string> observedProbeKeys;
+    for (auto* probe : probes)
+    {
+        const ProbeIdentity identity {
+            { probe->basestation->slot, probe->headstage->port, probe->dock },
+            probe->info.part_number.toStdString(),
+            std::to_string (probe->info.serial_number)
+        };
+        observedProbeKeys.push_back (stableCommittedStateKey (identity));
+    }
+    {
+        const ScopedLock stateLock (agentPresetStateMutex);
+        agentCommittedPresetStates.retainOnly (observedProbeKeys);
+    }
+
+    for (auto* probe : probes)
     {
         const ProbeIdentity identity {
             { probe->basestation->slot, probe->headstage->port, probe->dock },
@@ -1812,23 +1828,36 @@ String NeuropixThread::handleAgentPresetMessage (const String& jsonMessage)
             std::to_string (probe->info.serial_number)
         };
         const auto key = stableCommittedStateKey (identity);
+        const auto status = probeStatusFromSource (probe->getStatus());
+        const bool presetFamilySupported = probe->type == ProbeType::NP2_1
+                                           || probe->type == ProbeType::NP2_4;
         const bool disabled = ! probe->isEnabled
                               || probe->getStatus() == SourceStatus::DISABLED;
-        if (! isPresetTargetPublishable (
-                probeStatusFromSource (probe->getStatus()),
-                probe->isValid,
-                disabled))
         {
             const ScopedLock stateLock (agentPresetStateMutex);
-            agentCommittedPresetStates.observeUnavailable (key);
+            agentCommittedPresetStates.observeIdentity (identity);
+        }
+        if (! isPresetTargetPublishable (
+                status,
+                probe->isValid,
+                presetFamilySupported,
+                disabled))
+        {
+            if (shouldInvalidateCommittedState (status))
+            {
+                const ScopedLock stateLock (agentPresetStateMutex);
+                agentCommittedPresetStates.observeIdentityLost (key);
+            }
             continue;
         }
 
         auto inventory = presetInventoryForProbe (*probe, processorId);
         {
             const ScopedLock stateLock (agentPresetStateMutex);
-            inventory.currentMap = agentCommittedPresetStates.resolveOrInitialize (
-                key, inventory.currentMap);
+            const auto committed = agentCommittedPresetStates.resolve (key);
+            if (! committed.has_value())
+                continue;
+            inventory.currentMap = *committed;
         }
         inventories.push_back (std::move (inventory));
     }
@@ -1959,6 +1988,12 @@ String NeuropixThread::handleAgentPresetMessage (const String& jsonMessage)
     // independent authoritative GET will classify convergence.
     return String (serializeAgentAccepted (
         "neuropix-preset-" + std::to_string (++agentPresetOperationCounter)));
+}
+
+void NeuropixThread::invalidateAgentPresetConnectionEpoch()
+{
+    const ScopedLock stateLock (agentPresetStateMutex);
+    agentCommittedPresetStates.invalidateConnectionEpoch();
 }
 
 String NeuropixThread::getCustomProbeName (String serialNumber)
