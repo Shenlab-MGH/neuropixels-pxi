@@ -132,6 +132,20 @@ int main()
                 "preset apply blocks close-open hardware refresh");
     operationGate.finishApply();
 
+    {
+        auto refreshLease = operationGate.tryAcquireRefresh();
+        expectTrue (refreshLease.has_value()
+                        && operationGate.refreshInProgress(),
+                    "refresh lease owns gate for its full scope");
+        auto movedLease = std::move (*refreshLease);
+        refreshLease.reset();
+        expectTrue (operationGate.refreshInProgress(),
+                    "moving refresh lease does not release gate early");
+    }
+    expectTrue (operationGate.tryBeginApply(),
+                "refresh lease scope releases gate after failed or completed launch");
+    operationGate.finishApply();
+
     const std::vector<PresetSourceBinding> filteredBindings {
         { "publishable-probe-1", "SERIAL-B", 1 }
     };

@@ -348,6 +348,29 @@ SourceResolution resolvePresetSource (
     return { match->sourceIndex, "ok" };
 }
 
+PresetHardwareOperationGate::Lease::Lease (
+    PresetHardwareOperationGate& owner,
+    Operation ownedOperation)
+    : gate (&owner), operation (ownedOperation)
+{
+}
+
+PresetHardwareOperationGate::Lease::Lease (Lease&& other) noexcept
+    : gate (other.gate), operation (other.operation)
+{
+    other.gate = nullptr;
+}
+
+PresetHardwareOperationGate::Lease::~Lease()
+{
+    if (gate == nullptr)
+        return;
+    if (operation == Operation::REFRESH)
+        gate->finishRefresh();
+    else if (operation == Operation::APPLY)
+        gate->finishApply();
+}
+
 bool PresetHardwareOperationGate::tryBeginApply()
 {
     const std::lock_guard<std::mutex> lock (mutex);
@@ -364,6 +387,16 @@ bool PresetHardwareOperationGate::tryBeginRefresh()
         return false;
     operation = Operation::REFRESH;
     return true;
+}
+
+std::optional<PresetHardwareOperationGate::Lease>
+PresetHardwareOperationGate::tryAcquireRefresh()
+{
+    const std::lock_guard<std::mutex> lock (mutex);
+    if (operation != Operation::IDLE)
+        return std::nullopt;
+    operation = Operation::REFRESH;
+    return Lease (*this, Operation::REFRESH);
 }
 
 void PresetHardwareOperationGate::finishApply()

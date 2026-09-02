@@ -544,8 +544,6 @@ void BackgroundLoaderWithProgressWindow::run()
     setStatusMessage ("Checking for hardware changes...");
     LOGC ("Scanning for hardware changes...");
     updateProbeMap();
-
-    thread->finishAgentPresetRefresh();
 }
 
 BackgroundLoader::BackgroundLoader (NeuropixThread* thread_, NeuropixEditor* editor_)
@@ -971,10 +969,15 @@ void NeuropixEditor::buttonClicked (Button* button)
         else if (button == refreshButton.get())
         {
             if (uiLoader->isThreadRunning()
-                || ! thread->probeSettingsUpdateQueue.isEmpty()
-                || ! thread->tryBeginAgentPresetRefresh())
+                || ! thread->probeSettingsUpdateQueue.isEmpty())
             {
                 LOGC ("Cannot refresh hardware while probe settings are being applied.");
+                return;
+            }
+            auto refreshLease = thread->tryAcquireAgentPresetRefresh();
+            if (! refreshLease.has_value())
+            {
+                LOGC ("Cannot refresh hardware while a preset operation is active.");
                 return;
             }
 
@@ -996,7 +999,6 @@ void NeuropixEditor::buttonClicked (Button* button)
             if (thread->getBasestations()[0]->type == BasestationType::SIMULATED)
             {
                 uiLoaderWithProgressWindow->updateProbeMap(); // call outside of thread
-                thread->finishAgentPresetRefresh();
             }
             else
             {

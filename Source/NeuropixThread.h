@@ -207,8 +207,8 @@ public:
 
     /** Invalidates SDK-acknowledged preset state before hardware reopen/rescan. */
     void invalidateAgentPresetConnectionEpoch();
-    bool tryBeginAgentPresetRefresh();
-    void finishAgentPresetRefresh();
+    std::optional<neuropix::agent::PresetHardwareOperationGate::Lease>
+        tryAcquireAgentPresetRefresh();
     bool isAgentPresetRefreshInProgress() const;
 
     /** Returns pointer to active DataSources (probes + ADCs)*/

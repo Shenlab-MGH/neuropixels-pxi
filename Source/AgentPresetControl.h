@@ -84,16 +84,34 @@ struct SourceResolution
 
 class PresetHardwareOperationGate
 {
+    enum class Operation { IDLE, APPLY, REFRESH };
+
 public:
+    class Lease
+    {
+    public:
+        Lease (Lease&& other) noexcept;
+        Lease& operator= (Lease&&) = delete;
+        Lease (const Lease&) = delete;
+        Lease& operator= (const Lease&) = delete;
+        ~Lease();
+
+    private:
+        friend class PresetHardwareOperationGate;
+        Lease (PresetHardwareOperationGate& owner, Operation ownedOperation);
+        PresetHardwareOperationGate* gate;
+        Operation operation;
+    };
+
     bool tryBeginApply();
     bool tryBeginRefresh();
+    std::optional<Lease> tryAcquireRefresh();
     void finishApply();
     void finishRefresh();
     bool applyInProgress() const;
     bool refreshInProgress() const;
 
 private:
-    enum class Operation { IDLE, APPLY, REFRESH };
     mutable std::mutex mutex;
     Operation operation = Operation::IDLE;
 };

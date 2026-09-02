@@ -2033,14 +2033,10 @@ void NeuropixThread::invalidateAgentPresetConnectionEpoch()
     agentCommittedPresetStates.invalidateConnectionEpoch();
 }
 
-bool NeuropixThread::tryBeginAgentPresetRefresh()
+std::optional<neuropix::agent::PresetHardwareOperationGate::Lease>
+NeuropixThread::tryAcquireAgentPresetRefresh()
 {
-    return agentPresetHardwareOperation.tryBeginRefresh();
-}
-
-void NeuropixThread::finishAgentPresetRefresh()
-{
-    agentPresetHardwareOperation.finishRefresh();
+    return agentPresetHardwareOperation.tryAcquireRefresh();
 }
 
 bool NeuropixThread::isAgentPresetRefreshInProgress() const
