@@ -55,6 +55,23 @@ if (OE_AGENT_NEUROPIXELS_SIMULATION)
 endif()
 target_include_directories(${PLUGIN_NAME} PUBLIC ${GUI_BASE_DIR}/JuceLibraryCode ${GUI_BASE_DIR}/JuceLibraryCode/modules ${GUI_BASE_DIR}/Plugins/Headers ${GUI_COMMONLIB_DIR}/include)
 
+if (WIN32 AND MSVC)
+	enable_testing()
+	get_filename_component(MSVC_TOOL_DIRECTORY "${CMAKE_LINKER}" DIRECTORY)
+	find_program(OE_PLUGIN_DUMPBIN_EXECUTABLE
+		NAMES dumpbin.exe dumpbin
+		HINTS "${MSVC_TOOL_DIRECTORY}"
+		NO_DEFAULT_PATH)
+	if (NOT OE_PLUGIN_DUMPBIN_EXECUTABLE)
+		message(FATAL_ERROR "dumpbin is required to verify Windows plugin exports")
+	endif()
+	add_test(NAME neuropix_windows_plugin_exports
+		COMMAND "${CMAKE_COMMAND}"
+			"-DPLUGIN_DLL=$<TARGET_FILE:${PLUGIN_NAME}>"
+			"-DDUMPBIN_EXECUTABLE=${OE_PLUGIN_DUMPBIN_EXECUTABLE}"
+			-P "${CMAKE_CURRENT_SOURCE_DIR}/Tests/VerifyWindowsPluginExports.cmake")
+endif()
+
 set(GUI_BIN_DIR ${GUI_BASE_DIR}/Build/${CONFIGURATION_FOLDER})
 
 if (NOT CMAKE_LIBRARY_ARCHITECTURE)
