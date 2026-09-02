@@ -541,7 +541,7 @@ int PxiBasestation::getProbeCount()
 
 float PxiBasestation::getFillPercentage()
 {
-    if (neuropixThread->isRefreshing)
+    if (neuropixThread->isAgentPresetRefreshInProgress())
         return 0.0;
 
     float perc = 0.0;

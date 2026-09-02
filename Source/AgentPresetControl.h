@@ -4,6 +4,7 @@
 
 #include <cstdint>
 #include <map>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <vector>
@@ -68,6 +69,35 @@ struct MutationDecision
     const Preset* target = nullptr;
 };
 
+struct PresetSourceBinding
+{
+    std::string probeId;
+    std::string probeSerial;
+    std::size_t sourceIndex;
+};
+
+struct SourceResolution
+{
+    std::optional<std::size_t> sourceIndex;
+    std::string code;
+};
+
+class PresetHardwareOperationGate
+{
+public:
+    bool tryBeginApply();
+    bool tryBeginRefresh();
+    void finishApply();
+    void finishRefresh();
+    bool applyInProgress() const;
+    bool refreshInProgress() const;
+
+private:
+    enum class Operation { IDLE, APPLY, REFRESH };
+    mutable std::mutex mutex;
+    Operation operation = Operation::IDLE;
+};
+
 std::string stablePresetId (const std::string& probePartNumber,
                             const std::string& label);
 std::string stableCommittedStateKey (const ProbeIdentity& probe);
@@ -86,11 +116,25 @@ bool isPresetTargetPublishable (ProbeStatus status,
                                 bool presetFamilySupported,
                                 bool disabled);
 bool shouldInvalidateCommittedState (ProbeStatus status);
+SourceResolution resolvePresetSource (
+    const std::vector<PresetSourceBinding>& bindings,
+    const std::string& probeId,
+    const std::string& expectedSerial);
 
 class CommittedPresetStateCache
 {
 public:
     std::optional<ElectrodeMap> resolve (const std::string& key) const;
+    std::optional<ElectrodeMap> resolveForPublication (
+        const std::string& key,
+        ProbeStatus status,
+        bool valid,
+        bool presetFamilySupported,
+        bool disabled) const;
+    std::uint64_t connectionEpoch() const;
+    bool commitIfEpoch (const std::string& key,
+                        const ElectrodeMap& acknowledgedState,
+                        std::uint64_t expectedEpoch);
     void commit (const std::string& key, const ElectrodeMap& acknowledgedState);
     void observeIdentityLost (const std::string& key);
     void observeIdentity (const ProbeIdentity& probe);
@@ -99,5 +143,6 @@ public:
 
 private:
     std::map<std::string, ElectrodeMap> states;
+    std::uint64_t epoch = 0;
 };
 }

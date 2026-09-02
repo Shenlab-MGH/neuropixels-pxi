@@ -629,17 +629,28 @@ NeuropixThread::~NeuropixThread()
 
 void NeuropixThread::updateProbeSettingsQueue (ProbeSettings settings)
 {
+    uint64 connectionEpoch;
+    {
+        const ScopedLock stateLock (agentPresetStateMutex);
+        connectionEpoch = agentCommittedPresetStates.connectionEpoch();
+    }
     probeSettingsUpdateQueue.add (settings);
+    probeSettingsUpdateEpochQueue.add (connectionEpoch);
 }
 
 void NeuropixThread::applyProbeSettingsQueue()
 {
-    const bool agentApply = agentPresetApplyInProgress.load();
+    const bool agentApply = agentPresetHardwareOperation.applyInProgress();
     struct ApplyFlagReset
     {
-        std::atomic_bool& flag;
-        ~ApplyFlagReset() { flag.store (false); }
-    } applyFlagReset { agentPresetApplyInProgress };
+        neuropix::agent::PresetHardwareOperationGate& gate;
+        bool active;
+        ~ApplyFlagReset()
+        {
+            if (active)
+                gate.finishApply();
+        }
+    } applyFlagReset { agentPresetHardwareOperation, agentApply };
 
     configurationComplete = false;
 
@@ -651,8 +662,13 @@ void NeuropixThread::applyProbeSettingsQueue()
     Array<Probe*> uncalibratedProbes;
 
     // Apply settings to probes
-    for (auto settings : probeSettingsUpdateQueue)
+    for (int settingsIndex = 0;
+         settingsIndex < probeSettingsUpdateQueue.size();
+         ++settingsIndex)
     {
+        auto settings = probeSettingsUpdateQueue[settingsIndex];
+        const auto queuedConnectionEpoch =
+            probeSettingsUpdateEpochQueue[settingsIndex];
         if (settings.probe->basestation->isBusy())
             settings.probe->basestation->waitForThreadToExit();
 
@@ -691,10 +707,11 @@ void NeuropixThread::applyProbeSettingsQueue()
                     std::to_string (settings.probe->info.serial_number)
                 };
                 const auto key = neuropix::agent::stableCommittedStateKey (identity);
-                agentCommittedPresetStates.commit (
+                agentCommittedPresetStates.commitIfEpoch (
                     key,
                     electrodeMapForIndices (*settings.probe,
-                                            settings.selectedElectrode));
+                                            settings.selectedElectrode),
+                    queuedConnectionEpoch);
             }
 
             if (settings.probe->isEnabled)
@@ -719,6 +736,7 @@ void NeuropixThread::applyProbeSettingsQueue()
     }
 
     probeSettingsUpdateQueue.clear();
+    probeSettingsUpdateEpochQueue.clear();
 
     // Show warning if any probes are uncalibrated
     if (uncalibratedProbes.size() > 0 && ! calibrationWarningShown)
@@ -1802,12 +1820,18 @@ String NeuropixThread::handleAgentPresetMessage (const String& jsonMessage)
                "\"version\":\"0.0.5\",\"operations\":[\"inventory\",\"set\"]}}";
     }
 
+    if (agentPresetHardwareOperation.refreshInProgress())
+        return agentError ("preset_apply_in_progress",
+                           "Neuropixels hardware refresh is in progress.");
+
     std::vector<PresetInventory> inventories;
+    std::vector<PresetSourceBinding> sourceBindings;
     const int processorId = sn->getNodeId();
     const auto probes = getProbes();
     std::vector<std::string> observedProbeKeys;
-    for (auto* probe : probes)
+    for (int sourceIndex = 0; sourceIndex < probes.size(); ++sourceIndex)
     {
+        auto* probe = probes[sourceIndex];
         const ProbeIdentity identity {
             { probe->basestation->slot, probe->headstage->port, probe->dock },
             probe->info.part_number.toStdString(),
@@ -1820,8 +1844,9 @@ String NeuropixThread::handleAgentPresetMessage (const String& jsonMessage)
         agentCommittedPresetStates.retainOnly (observedProbeKeys);
     }
 
-    for (auto* probe : probes)
+    for (int sourceIndex = 0; sourceIndex < probes.size(); ++sourceIndex)
     {
+        auto* probe = probes[sourceIndex];
         const ProbeIdentity identity {
             { probe->basestation->slot, probe->headstage->port, probe->dock },
             probe->info.part_number.toStdString(),
@@ -1833,32 +1858,24 @@ String NeuropixThread::handleAgentPresetMessage (const String& jsonMessage)
                                            || probe->type == ProbeType::NP2_4;
         const bool disabled = ! probe->isEnabled
                               || probe->getStatus() == SourceStatus::DISABLED;
+        std::optional<ElectrodeMap> committed;
         {
             const ScopedLock stateLock (agentPresetStateMutex);
             agentCommittedPresetStates.observeIdentity (identity);
-        }
-        if (! isPresetTargetPublishable (
-                status,
-                probe->isValid,
-                presetFamilySupported,
-                disabled))
-        {
             if (shouldInvalidateCommittedState (status))
-            {
-                const ScopedLock stateLock (agentPresetStateMutex);
                 agentCommittedPresetStates.observeIdentityLost (key);
-            }
-            continue;
+            else
+                committed = agentCommittedPresetStates.resolveForPublication (
+                    key, status, probe->isValid, presetFamilySupported, disabled);
         }
+        if (! committed.has_value())
+            continue;
 
         auto inventory = presetInventoryForProbe (*probe, processorId);
-        {
-            const ScopedLock stateLock (agentPresetStateMutex);
-            const auto committed = agentCommittedPresetStates.resolve (key);
-            if (! committed.has_value())
-                continue;
-            inventory.currentMap = *committed;
-        }
+        inventory.currentMap = *committed;
+        sourceBindings.push_back ({ inventory.probeId,
+                                    inventory.probe.serialNumber,
+                                    static_cast<std::size_t> (sourceIndex) });
         inventories.push_back (std::move (inventory));
     }
     const auto generation = presetInventoryGeneration (inventories);
@@ -1896,11 +1913,17 @@ String NeuropixThread::handleAgentPresetMessage (const String& jsonMessage)
     const auto expectedGeneration = payload->getProperty ("expected_inventory_generation").toString().toStdString();
     const auto expectedHash = payload->getProperty ("expected_electrode_map_hash").toString().toStdString();
 
-    if (agentPresetApplyInProgress.load())
+    if (agentPresetHardwareOperation.applyInProgress())
         return agentError ("preset_apply_in_progress", "A preset apply operation is already running.");
 
     if (requestedProcessorId != processorId)
         return agentError ("processor_not_found", "Processor id does not identify this Neuropixels source.");
+
+    const auto sourceResolution = resolvePresetSource (
+        sourceBindings, requestedProbeId, expectedSerial);
+    if (! sourceResolution.sourceIndex.has_value())
+        return agentError (sourceResolution.code.c_str(),
+                           "Fresh target identity did not resolve uniquely.");
 
     int matchIndex = -1;
     for (std::size_t index = 0; index < inventories.size(); ++index)
@@ -1940,7 +1963,21 @@ String NeuropixThread::handleAgentPresetMessage (const String& jsonMessage)
     const auto* beforePreset = selectedPreset (before);
     const bool changed = beforePreset == nullptr || beforePreset->presetId != requestedPresetId;
 
-    Probe* targetProbe = getProbes()[matchIndex];
+    if (! agentPresetHardwareOperation.tryBeginApply())
+        return agentError ("preset_apply_in_progress",
+                           "Neuropixels hardware operation is already running.");
+    struct ApplyGateRelease
+    {
+        PresetHardwareOperationGate& gate;
+        bool release = true;
+        ~ApplyGateRelease()
+        {
+            if (release)
+                gate.finishApply();
+        }
+    } applyGateRelease { agentPresetHardwareOperation };
+
+    Probe* targetProbe = probes[static_cast<int> (*sourceResolution.sourceIndex)];
     if (changed)
     {
         if (editor == nullptr || editor->uiLoader == nullptr)
@@ -1968,16 +2005,16 @@ String NeuropixThread::handleAgentPresetMessage (const String& jsonMessage)
         if (editor->uiLoader->isThreadRunning() || ! probeSettingsUpdateQueue.isEmpty())
             return agentError ("preset_apply_in_progress", "Background settings worker is busy.");
 
-        agentPresetApplyInProgress.store (true);
         configurationComplete = false;
         updateProbeSettingsQueue (updated);
         if (! editor->uiLoader->startThread())
         {
             probeSettingsUpdateQueue.clear();
+            probeSettingsUpdateEpochQueue.clear();
             configurationComplete = true;
-            agentPresetApplyInProgress.store (false);
             return agentError ("preset_apply_failed", "Background settings worker did not start; no write was dispatched.");
         }
+        applyGateRelease.release = false;
 
         return String (serializeAgentAccepted (
             "neuropix-preset-" + std::to_string (++agentPresetOperationCounter)));
@@ -1994,6 +2031,21 @@ void NeuropixThread::invalidateAgentPresetConnectionEpoch()
 {
     const ScopedLock stateLock (agentPresetStateMutex);
     agentCommittedPresetStates.invalidateConnectionEpoch();
+}
+
+bool NeuropixThread::tryBeginAgentPresetRefresh()
+{
+    return agentPresetHardwareOperation.tryBeginRefresh();
+}
+
+void NeuropixThread::finishAgentPresetRefresh()
+{
+    agentPresetHardwareOperation.finishRefresh();
+}
+
+bool NeuropixThread::isAgentPresetRefreshInProgress() const
+{
+    return agentPresetHardwareOperation.refreshInProgress();
 }
 
 String NeuropixThread::getCustomProbeName (String serialNumber)

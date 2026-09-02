@@ -57,23 +57,35 @@ int main()
     expectTrue (isPresetTargetPublishable (ProbeStatus::ACQUIRING, true, true, false)
                     && isPresetTargetPublishable (ProbeStatus::RECORDING, true, true, false),
                 "connected acquisition states remain available for read-only inventory");
+    expectTrue (isPresetTargetPublishable (ProbeStatus::UPDATING, true, true, false),
+                "UPDATING remains readable when a committed acknowledgment exists");
     expectTrue (! isPresetTargetPublishable (ProbeStatus::DISCONNECTED, true, true, false)
-                    && ! isPresetTargetPublishable (ProbeStatus::UPDATING, true, true, false)
                     && ! isPresetTargetPublishable (ProbeStatus::CONNECTED, false, true, false)
                     && ! isPresetTargetPublishable (ProbeStatus::CONNECTED, true, false, false)
                     && ! isPresetTargetPublishable (ProbeStatus::CONNECTED, true, true, true),
-                "disconnected updating invalid and disabled probes are omitted");
+                "disconnected invalid unsupported and disabled probes are omitted");
 
     CommittedPresetStateCache cache;
     const auto cacheKey = stableCommittedStateKey (firstProbe);
+    const auto connectionEpoch = cache.connectionEpoch();
     expectTrue (! cache.resolve (cacheKey).has_value(),
                 "connected software settings are not published without SDK acknowledgment");
+    expectTrue (! cache.resolveForPublication (cacheKey, ProbeStatus::UPDATING,
+                                                true, true, false).has_value(),
+                "UPDATING without a committed acknowledgment remains omitted");
     cache.commit (cacheKey, bankA);
     expectTrue (! shouldInvalidateCommittedState (ProbeStatus::UPDATING),
-                "UPDATING omits target but retains last committed acknowledgment");
+                "UPDATING retains last committed acknowledgment");
     expectEqual (canonicalElectrodeMapHash (*cache.resolve (cacheKey)),
                  canonicalElectrodeMapHash (bankA),
                  "failed write desired state cannot replace committed A after UPDATING");
+    expectEqual (canonicalElectrodeMapHash (*cache.resolve (cacheKey)),
+                 canonicalElectrodeMapHash (bankA),
+                 "sustained UPDATING continues to publish only committed A");
+    expectEqual (canonicalElectrodeMapHash (*cache.resolveForPublication (
+                     cacheKey, ProbeStatus::UPDATING, true, true, false)),
+                 canonicalElectrodeMapHash (bankA),
+                 "UPDATING with an acknowledgment publishes committed A");
     expectTrue (shouldInvalidateCommittedState (ProbeStatus::DISCONNECTED),
                 "true disconnect invalidates committed acknowledgment");
     expectTrue (shouldInvalidateCommittedState (ProbeStatus::CONNECTING),
@@ -96,10 +108,52 @@ int main()
     cache.invalidateConnectionEpoch();
     expectTrue (! cache.resolve (cacheKey).has_value(),
                  "hardware refresh connection epoch cannot retain an old acknowledgment");
+    expectTrue (! cache.commitIfEpoch (cacheKey, bankA, connectionEpoch),
+                "delayed old-epoch SDK success cannot commit after refresh");
+    expectTrue (! cache.resolve (cacheKey).has_value(),
+                "delayed old-epoch commit leaves refreshed target unpublished");
     cache.commit (cacheKey, bankB);
     expectEqual (canonicalElectrodeMapHash (*cache.resolve (cacheKey)),
                  canonicalElectrodeMapHash (bankB),
                  "successful SDK commit is required before target publication");
+
+    PresetHardwareOperationGate operationGate;
+    expectTrue (operationGate.tryBeginRefresh(),
+                "idle hardware operation gate starts refresh");
+    int queuedDispatches = 0;
+    if (operationGate.tryBeginApply())
+        ++queuedDispatches;
+    expectTrue (queuedDispatches == 0,
+                "refresh-active SET performs zero settings dispatches");
+    operationGate.finishRefresh();
+    expectTrue (operationGate.tryBeginApply(),
+                "idle hardware operation gate starts preset apply");
+    expectTrue (! operationGate.tryBeginRefresh(),
+                "preset apply blocks close-open hardware refresh");
+    operationGate.finishApply();
+
+    const std::vector<PresetSourceBinding> filteredBindings {
+        { "publishable-probe-1", "SERIAL-B", 1 }
+    };
+    expectTrue (resolvePresetSource (filteredBindings,
+                                     "publishable-probe-1",
+                                     "SERIAL-B").sourceIndex == 1,
+                "omitted probe zero cannot redirect probe one mutation");
+    const std::vector<PresetSourceBinding> multipleOmittedBindings {
+        { "publishable-probe-3", "SERIAL-D", 3 }
+    };
+    expectTrue (resolvePresetSource (multipleOmittedBindings,
+                                     "publishable-probe-3",
+                                     "SERIAL-D").sourceIndex == 3,
+                "multiple omitted probes preserve original source index");
+    expectTrue (resolvePresetSource ({ { "duplicate", "A", 0 },
+                                       { "duplicate", "B", 2 } },
+                                     "duplicate", "A").code == "ambiguous_target",
+                "duplicate fresh probe id fails closed");
+    expectTrue (resolvePresetSource (filteredBindings,
+                                     "publishable-probe-1",
+                                     "WRONG").code == "probe_identity_mismatch",
+                "fresh serial mismatch fails before source dispatch");
 
     PresetInventory inventory;
     inventory.processorId = 100;
@@ -172,6 +226,20 @@ int main()
     expectEqual (presetInventoryGeneration ({ inventory }),
                  presetInventoryGeneration ({ switched }),
                  "selection changes do not invalidate inventory generation CAS");
+    cache.commit (cacheKey, bankA);
+    auto updatingReadback = inventory;
+    updatingReadback.currentMap = *cache.resolveForPublication (
+        cacheKey, ProbeStatus::UPDATING, true, true, false);
+    cache.commit (cacheKey, bankB);
+    auto connectedReadback = inventory;
+    connectedReadback.currentMap = *cache.resolveForPublication (
+        cacheKey, ProbeStatus::CONNECTED, true, true, false);
+    expectEqual (presetInventoryGeneration ({ updatingReadback }),
+                 presetInventoryGeneration ({ connectedReadback }),
+                 "accepted apply polls old then new acknowledgment under one generation");
+    expectTrue (canonicalElectrodeMapHash (updatingReadback.currentMap)
+                    != canonicalElectrodeMapHash (connectedReadback.currentMap),
+                "UPDATING old acknowledgment advances only after successful SDK commit");
     switched.presets.pop_back();
     expectTrue (presetInventoryGeneration ({ inventory })
                     != presetInventoryGeneration ({ switched }),

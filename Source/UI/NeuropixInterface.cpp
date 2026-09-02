@@ -1479,7 +1479,7 @@ void NeuropixInterface::paint (Graphics& g)
 
 void NeuropixInterface::drawLegend (Graphics& g)
 {
-    if (thread->isRefreshing)
+    if (thread->isAgentPresetRefreshInProgress())
         return;
     g.setColour (findColour (ThemeColours::defaultText).withAlpha (0.75f));
     g.setFont (15);

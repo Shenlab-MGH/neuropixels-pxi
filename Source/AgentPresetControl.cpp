@@ -315,6 +315,7 @@ bool isPresetTargetPublishable (ProbeStatus status,
                                 bool disabled)
 {
     const bool connectedState = status == ProbeStatus::CONNECTED
+                                || status == ProbeStatus::UPDATING
                                 || status == ProbeStatus::ACQUIRING
                                 || status == ProbeStatus::RECORDING;
     return connectedState && valid && presetFamilySupported && ! disabled;
@@ -326,6 +327,71 @@ bool shouldInvalidateCommittedState (ProbeStatus status)
            || status == ProbeStatus::CONNECTING;
 }
 
+SourceResolution resolvePresetSource (
+    const std::vector<PresetSourceBinding>& bindings,
+    const std::string& probeId,
+    const std::string& expectedSerial)
+{
+    const PresetSourceBinding* match = nullptr;
+    for (const auto& binding : bindings)
+    {
+        if (binding.probeId != probeId)
+            continue;
+        if (match != nullptr)
+            return { std::nullopt, "ambiguous_target" };
+        match = &binding;
+    }
+    if (match == nullptr)
+        return { std::nullopt, "probe_not_found" };
+    if (match->probeSerial != expectedSerial)
+        return { std::nullopt, "probe_identity_mismatch" };
+    return { match->sourceIndex, "ok" };
+}
+
+bool PresetHardwareOperationGate::tryBeginApply()
+{
+    const std::lock_guard<std::mutex> lock (mutex);
+    if (operation != Operation::IDLE)
+        return false;
+    operation = Operation::APPLY;
+    return true;
+}
+
+bool PresetHardwareOperationGate::tryBeginRefresh()
+{
+    const std::lock_guard<std::mutex> lock (mutex);
+    if (operation != Operation::IDLE)
+        return false;
+    operation = Operation::REFRESH;
+    return true;
+}
+
+void PresetHardwareOperationGate::finishApply()
+{
+    const std::lock_guard<std::mutex> lock (mutex);
+    if (operation == Operation::APPLY)
+        operation = Operation::IDLE;
+}
+
+void PresetHardwareOperationGate::finishRefresh()
+{
+    const std::lock_guard<std::mutex> lock (mutex);
+    if (operation == Operation::REFRESH)
+        operation = Operation::IDLE;
+}
+
+bool PresetHardwareOperationGate::applyInProgress() const
+{
+    const std::lock_guard<std::mutex> lock (mutex);
+    return operation == Operation::APPLY;
+}
+
+bool PresetHardwareOperationGate::refreshInProgress() const
+{
+    const std::lock_guard<std::mutex> lock (mutex);
+    return operation == Operation::REFRESH;
+}
+
 std::optional<ElectrodeMap> CommittedPresetStateCache::resolve (
     const std::string& key) const
 {
@@ -333,6 +399,35 @@ std::optional<ElectrodeMap> CommittedPresetStateCache::resolve (
     if (existing != states.end())
         return existing->second;
     return std::nullopt;
+}
+
+std::optional<ElectrodeMap> CommittedPresetStateCache::resolveForPublication (
+    const std::string& key,
+    ProbeStatus status,
+    bool valid,
+    bool presetFamilySupported,
+    bool disabled) const
+{
+    if (! isPresetTargetPublishable (
+            status, valid, presetFamilySupported, disabled))
+        return std::nullopt;
+    return resolve (key);
+}
+
+std::uint64_t CommittedPresetStateCache::connectionEpoch() const
+{
+    return epoch;
+}
+
+bool CommittedPresetStateCache::commitIfEpoch (
+    const std::string& key,
+    const ElectrodeMap& acknowledgedState,
+    std::uint64_t expectedEpoch)
+{
+    if (expectedEpoch != epoch)
+        return false;
+    commit (key, acknowledgedState);
+    return true;
 }
 
 void CommittedPresetStateCache::commit (const std::string& key,
@@ -377,6 +472,7 @@ void CommittedPresetStateCache::retainOnly (
 
 void CommittedPresetStateCache::invalidateConnectionEpoch()
 {
+    ++epoch;
     states.clear();
 }
 }

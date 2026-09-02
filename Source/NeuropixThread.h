@@ -207,6 +207,9 @@ public:
 
     /** Invalidates SDK-acknowledged preset state before hardware reopen/rescan. */
     void invalidateAgentPresetConnectionEpoch();
+    bool tryBeginAgentPresetRefresh();
+    void finishAgentPresetRefresh();
+    bool isAgentPresetRefreshInProgress() const;
 
     /** Returns pointer to active DataSources (probes + ADCs)*/
     Array<DataSource*> getDataSources();
@@ -266,8 +269,6 @@ public:
     /** Map from <slot,port,dock> to <probe_serial, probe_settings> */
     std::map<std::tuple<int,int,int>, std::pair<uint64, ProbeSettings>> probeMap;
 
-    bool isRefreshing = false;
-
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (NeuropixThread);
 
 private:
@@ -283,7 +284,8 @@ private:
 
     CriticalSection agentPresetStateMutex;
     neuropix::agent::CommittedPresetStateCache agentCommittedPresetStates;
-    std::atomic_bool agentPresetApplyInProgress { false };
+    neuropix::agent::PresetHardwareOperationGate agentPresetHardwareOperation;
+    Array<uint64> probeSettingsUpdateEpochQueue;
     uint64 agentPresetOperationCounter = 0;
 
     long int counter;
