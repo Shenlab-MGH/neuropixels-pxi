@@ -3,6 +3,7 @@
 #include "AgentInventory.h"
 
 #include <cstdint>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -79,4 +80,17 @@ std::string serializePresetInventory (const std::vector<PresetInventory>& invent
 std::string presetInventoryGeneration (const std::vector<PresetInventory>& inventories);
 MutationDecision validatePresetMutation (const PresetInventory& inventory,
                                          const PresetMutation& mutation);
+bool isPresetTargetPublishable (ProbeStatus status, bool supported, bool disabled);
+
+class CommittedPresetStateCache
+{
+public:
+    ElectrodeMap resolveOrInitialize (const std::string& key,
+                                      const ElectrodeMap& observedSoftwareState);
+    void commit (const std::string& key, const ElectrodeMap& acknowledgedState);
+    void observeUnavailable (const std::string& key);
+
+private:
+    std::map<std::string, ElectrodeMap> states;
+};
 }

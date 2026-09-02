@@ -52,6 +52,22 @@ int main()
     expectTrue (stableCommittedStateKey (firstProbe)
                     != stableCommittedStateKey (replacementProbe),
                 "replacement probe at same locator cannot inherit committed state");
+    expectTrue (isPresetTargetPublishable (ProbeStatus::CONNECTED, true, false),
+                "only connected valid enabled probes are publishable");
+    expectTrue (! isPresetTargetPublishable (ProbeStatus::DISCONNECTED, true, false)
+                    && ! isPresetTargetPublishable (ProbeStatus::UPDATING, true, false)
+                    && ! isPresetTargetPublishable (ProbeStatus::ACQUIRING, true, false)
+                    && ! isPresetTargetPublishable (ProbeStatus::CONNECTED, false, false)
+                    && ! isPresetTargetPublishable (ProbeStatus::CONNECTED, true, true),
+                "disconnected active invalid and disabled probes are omitted");
+
+    CommittedPresetStateCache cache;
+    const auto cacheKey = stableCommittedStateKey (firstProbe);
+    cache.commit (cacheKey, bankA);
+    cache.observeUnavailable (cacheKey);
+    expectEqual (canonicalElectrodeMapHash (cache.resolveOrInitialize (cacheKey, bankB)),
+                 canonicalElectrodeMapHash (bankB),
+                 "same serial reconnect initializes fresh state instead of stale acknowledged cache");
 
     PresetInventory inventory;
     inventory.processorId = 100;

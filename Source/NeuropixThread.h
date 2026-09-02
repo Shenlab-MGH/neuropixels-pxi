@@ -279,7 +279,7 @@ private:
     bool configurationComplete;
 
     CriticalSection agentPresetStateMutex;
-    std::map<std::string, neuropix::agent::ElectrodeMap> agentCommittedPresetMaps;
+    neuropix::agent::CommittedPresetStateCache agentCommittedPresetStates;
     std::atomic_bool agentPresetApplyInProgress { false };
     uint64 agentPresetOperationCounter = 0;
 

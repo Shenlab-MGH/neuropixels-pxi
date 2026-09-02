@@ -307,4 +307,31 @@ MutationDecision validatePresetMutation (const PresetInventory& inventory,
 
     return { true, "ok", targetMapHash, &*preset };
 }
+
+bool isPresetTargetPublishable (ProbeStatus status, bool supported, bool disabled)
+{
+    return status == ProbeStatus::CONNECTED && supported && ! disabled;
+}
+
+ElectrodeMap CommittedPresetStateCache::resolveOrInitialize (
+    const std::string& key,
+    const ElectrodeMap& observedSoftwareState)
+{
+    const auto existing = states.find (key);
+    if (existing != states.end())
+        return existing->second;
+    states[key] = observedSoftwareState;
+    return observedSoftwareState;
+}
+
+void CommittedPresetStateCache::commit (const std::string& key,
+                                        const ElectrodeMap& acknowledgedState)
+{
+    states[key] = acknowledgedState;
+}
+
+void CommittedPresetStateCache::observeUnavailable (const std::string& key)
+{
+    states.erase (key);
+}
 }

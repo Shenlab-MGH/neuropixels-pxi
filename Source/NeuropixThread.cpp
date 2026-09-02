@@ -691,8 +691,10 @@ void NeuropixThread::applyProbeSettingsQueue()
                     std::to_string (settings.probe->info.serial_number)
                 };
                 const auto key = neuropix::agent::stableCommittedStateKey (identity);
-                agentCommittedPresetMaps[key] = electrodeMapForIndices (
-                    *settings.probe, settings.selectedElectrode);
+                agentCommittedPresetStates.commit (
+                    key,
+                    electrodeMapForIndices (*settings.probe,
+                                            settings.selectedElectrode));
             }
 
             if (settings.probe->isEnabled)
@@ -1803,18 +1805,32 @@ String NeuropixThread::handleAgentPresetMessage (const String& jsonMessage)
     std::vector<PresetInventory> inventories;
     const int processorId = sn->getNodeId();
     for (auto* probe : getProbes())
-        inventories.push_back (presetInventoryForProbe (*probe, processorId));
     {
-        const ScopedLock stateLock (agentPresetStateMutex);
-        for (auto& inventory : inventories)
+        const ProbeIdentity identity {
+            { probe->basestation->slot, probe->headstage->port, probe->dock },
+            probe->info.part_number.toStdString(),
+            std::to_string (probe->info.serial_number)
+        };
+        const auto key = stableCommittedStateKey (identity);
+        const bool disabled = ! probe->isEnabled
+                              || probe->getStatus() == SourceStatus::DISABLED;
+        if (! isPresetTargetPublishable (
+                probeStatusFromSource (probe->getStatus()),
+                probe->isValid,
+                disabled))
         {
-            const auto key = stableCommittedStateKey (inventory.probe);
-            const auto committed = agentCommittedPresetMaps.find (key);
-            if (committed == agentCommittedPresetMaps.end())
-                agentCommittedPresetMaps[key] = inventory.currentMap;
-            else
-                inventory.currentMap = committed->second;
+            const ScopedLock stateLock (agentPresetStateMutex);
+            agentCommittedPresetStates.observeUnavailable (key);
+            continue;
         }
+
+        auto inventory = presetInventoryForProbe (*probe, processorId);
+        {
+            const ScopedLock stateLock (agentPresetStateMutex);
+            inventory.currentMap = agentCommittedPresetStates.resolveOrInitialize (
+                key, inventory.currentMap);
+        }
+        inventories.push_back (std::move (inventory));
     }
     const auto generation = presetInventoryGeneration (inventories);
     for (auto& inventory : inventories)
