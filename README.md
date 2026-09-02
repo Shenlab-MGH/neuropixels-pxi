@@ -55,6 +55,28 @@ Next, launch Visual Studio and open the `OE_PLUGIN_neuropixels-pxi.sln` file tha
 
 Selecting the `INSTALL` project and manually building it will copy the `.dll` and any other required files into the GUI's `plugins` directory. The next time you launch the GUI from Visual Studio, both the Neuropixels PXI and OneBox plugins should be available (if built).
 
+### Test-only deterministic simulation
+
+For agent API integration tests that run without Neuropixels hardware, an
+explicit build option creates one deterministic simulated Neuropixels 2.0
+four-shank probe without scanning devices or opening either simulation dialog:
+
+```bash
+cmake -G "Visual Studio 17 2022" -A x64 \
+  -DOE_AGENT_NEUROPIXELS_SIMULATION=ON ..
+```
+
+The option is `OFF` by default and supports only the Neuropix-PXI source. A
+OneBox source fails closed instead of constructing a simulated OneBox topology.
+The simulated target uses part number `NP2013`, slot 2 / port 1 / dock 1, and
+reserved serial `2000024001`; the serial is visible as `probe_serial` and inside
+`probe_id` in the preset inventory, so test evidence cannot be confused with a
+physical probe run.
+
+This mode validates software integration only. Successful capability discovery,
+preset inventory, mutation, or readback in this mode is not Neuropixels hardware
+evidence and must not set `hardware_verified` or `scientific_verified`.
+
 
 ## License
 

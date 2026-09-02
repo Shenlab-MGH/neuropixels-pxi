@@ -11,6 +11,9 @@ get_filename_component(PROJECT_FOLDER ${CMAKE_CURRENT_SOURCE_DIR} ABSOLUTE)
 get_filename_component(PLUGIN_NAME ${PROJECT_FOLDER} NAME)
 
 project(OE_PLUGIN_${PLUGIN_NAME})
+option(OE_AGENT_NEUROPIXELS_SIMULATION
+    "Build a test-only no-hardware NP2.0 four-shank simulation path"
+    OFF)
 set(CMAKE_SHARED_LIBRARY_PREFIX "")
 if(${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
 	set(LINUX 1)
@@ -46,6 +49,10 @@ else()
 endif()
 
 target_compile_features(${PLUGIN_NAME} PUBLIC cxx_auto_type cxx_generalized_initializers)
+if (OE_AGENT_NEUROPIXELS_SIMULATION)
+	target_compile_definitions(${PLUGIN_NAME} PRIVATE
+		OE_AGENT_NEUROPIXELS_SIMULATION=1)
+endif()
 target_include_directories(${PLUGIN_NAME} PUBLIC ${GUI_BASE_DIR}/JuceLibraryCode ${GUI_BASE_DIR}/JuceLibraryCode/modules ${GUI_BASE_DIR}/Plugins/Headers ${GUI_COMMONLIB_DIR}/include)
 
 set(GUI_BIN_DIR ${GUI_BASE_DIR}/Build/${CONFIGURATION_FOLDER})

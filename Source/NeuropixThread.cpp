@@ -25,6 +25,7 @@
 #include "NeuropixEditor.h"
 #include "AgentInventoryAdapter.h"
 #include "AgentPresetControl.h"
+#include "AgentSimulationMode.h"
 
 #include "Basestations/OneBox.h"
 #include "Basestations/PxiBasestation.h"
@@ -307,6 +308,35 @@ NeuropixThread::NeuropixThread (SourceNode* sn, DeviceType type_) : DataThread (
     defaultSyncFrequencies.add (1);
 
     api_v3.isActive = true;
+
+    constexpr auto simulationPlan = neuropix::agent::simulationBuildPlan();
+    if constexpr (simulationPlan.enabled)
+    {
+        static_assert (! simulationPlan.enabled
+                       || (! simulationPlan.scanHardware
+                           && ! simulationPlan.showNoDevicePrompt
+                           && ! simulationPlan.showProbeConfigurationDialog));
+        static_assert (! simulationPlan.enabled
+                       || (simulationPlan.supportsPxi
+                           && ! simulationPlan.supportsOneBox));
+        if ((type == PXI && ! simulationPlan.supportsPxi)
+            || (type == ONEBOX && ! simulationPlan.supportsOneBox))
+        {
+            LOGE ("OE_AGENT_NEUROPIXELS_SIMULATION supports only the PXI source; refusing to create a OneBox topology.");
+            return;
+        }
+
+        LOGC ("OE agent test simulation enabled: skipping hardware scan and creating deterministic NP2.0 four-shank probe with serial ",
+              simulationPlan.probeSerialNumber, ".");
+        basestations.add (new SimulatedBasestation (this, type, simulationPlan.slot));
+        basestations.getLast()->open();
+        for (auto basestation : basestations)
+            basestation->checkFirmwareVersion();
+        initializeProbes();
+        setMainSync (0);
+        updateStreamInfo();
+        return;
+    }
 
     LOGC ("Scanning for devices...");
 

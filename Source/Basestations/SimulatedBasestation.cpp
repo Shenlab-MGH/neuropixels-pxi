@@ -23,6 +23,7 @@
 
 #include "SimulatedBasestation.h"
 
+#include "../AgentSimulationMode.h"
 #include "../Headstages/SimulatedHeadstage.h"
 #include "../Probes/SimulatedProbe.h"
 
@@ -115,22 +116,35 @@ SimulatedBasestation::SimulatedBasestation (NeuropixThread* neuropixThread,
 
 bool SimulatedBasestation::open()
 {
+    constexpr auto simulationPlan = neuropix::agent::simulationBuildPlan();
+    if constexpr (simulationPlan.showProbeConfigurationDialog)
+    {
+        DialogWindow::LaunchOptions options;
 
-    DialogWindow::LaunchOptions options;
+        configComponent = std::make_unique<SimulatedBasestationConfigWindow> (this);
+        options.content.setOwned (configComponent.get());
+        configComponent.release();
 
-    configComponent = std::make_unique<SimulatedBasestationConfigWindow> (this);
-    options.content.setOwned (configComponent.get());
-    configComponent.release();
+        options.content->setSize (320, 250);
 
-    options.content->setSize (320, 250);
+        options.dialogTitle = "Configure basestation";
+        options.dialogBackgroundColour = Colours::darkgrey;
+        options.escapeKeyTriggersCloseButton = true;
+        options.useNativeTitleBar = false;
+        options.resizable = false;
 
-    options.dialogTitle = "Configure basestation";
-    options.dialogBackgroundColour = Colours::darkgrey;
-    options.escapeKeyTriggersCloseButton = true;
-    options.useNativeTitleBar = false;
-    options.resizable = false;
-
-    int result = options.runModal();
+        options.runModal();
+    }
+    else
+    {
+        static_assert (! simulationPlan.enabled
+                       || (simulationPlan.port == 1
+                           && simulationPlan.dock == 1));
+        simulatedProbeTypes[0] = ProbeType::NP2_4;
+        simulatedProbeTypes[1] = ProbeType::NONE;
+        simulatedProbeTypes[2] = ProbeType::NONE;
+        simulatedProbeTypes[3] = ProbeType::NONE;
+    }
 
     headstages.clear();
     probes.clear();
@@ -163,7 +177,12 @@ bool SimulatedBasestation::open()
                 headstages.add (new SimulatedHeadstage (this, i + 1, "NP2003", 58948291 + i));
                 break;
             case ProbeType::NP2_4:
-                headstages.add (new SimulatedHeadstage (this, i + 1, "NP2013", 68948291 + i));
+                headstages.add (new SimulatedHeadstage (
+                    this, i + 1,
+                    simulationPlan.enabled ? simulationPlan.probePartNumber
+                                           : "NP2013",
+                    simulationPlan.enabled ? simulationPlan.probeSerialNumber
+                                           : 68948291 + i));
                 break;
             case ProbeType::OPTO:
                 headstages.add (new SimulatedHeadstage (this, i + 1, "NP1300", 78948291 + i));
