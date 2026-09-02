@@ -31,6 +31,7 @@
 #include <vector>
 
 #include "API/NeuropixAPI.h"
+#include "SimulatedOperationStatus.h"
 
 #include "UI/ActivityView.h"
 #include "UI/ProbeNameConfig.h"
@@ -332,7 +333,8 @@ public:
     }
 
     /** Holds error codes*/
-    Neuropixels::NP_ErrorCode errorCode;
+    Neuropixels::NP_ErrorCode errorCode =
+        neuropix::simulation::initialOperationStatus();
 };
 
 /** Holds info about APIv3, as well as a boolean value to indicate whether or not it is being used*/

@@ -289,6 +289,8 @@ void SimulatedProbe::selectElectrodes()
     {
         selectElectrodeConfiguration (availableElectrodeConfigurationsUHD[settings.electrodeConfigurationIndex]);
     }
+
+    neuropix::simulation::acknowledgeOperationSuccess (errorCode);
 }
 
 Array<int> SimulatedProbe::selectElectrodeConfiguration (String config)
@@ -815,6 +817,7 @@ void SimulatedProbe::writeConfiguration()
     std::this_thread::sleep_for (std::chrono::milliseconds (500));
 
     LOGC ("Wrote configuration for simulated probe.");
+    neuropix::simulation::acknowledgeOperationSuccess (errorCode);
 }
 
 void SimulatedProbe::startAcquisition()
