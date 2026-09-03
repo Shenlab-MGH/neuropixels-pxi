@@ -170,16 +170,30 @@ int main()
     };
     expectTrue (np2FourShankSopPresetLabels() == expectedSopPresets,
                 "NP2 four-shank inventory pins the existing eight-block SOP order");
-    const auto filteredSopPresets = retainNp2FourShankSopPresets ({
-        { "ignored:single", "Shank 1 Bank A", bankA },
-        { "p:all-97", "All Shanks 97-192", bankB },
-        { "p:all-1", "All Shanks 1-96", bankA },
-        { "ignored:ninth", "All Shanks 769-864", bankB }
-    });
-    expectTrue (filteredSopPresets.size() == 2
-                    && filteredSopPresets[0].label == "All Shanks 1-96"
-                    && filteredSopPresets[1].label == "All Shanks 97-192",
-                "production and simulation share the exact SOP filter and order");
+    std::vector<Preset> shuffledSopCandidates;
+    for (auto label = expectedSopPresets.rbegin(); label != expectedSopPresets.rend(); ++label)
+        shuffledSopCandidates.push_back ({ stablePresetId ("NP2013", *label),
+                                           *label, bankA });
+    shuffledSopCandidates.push_back ({ "ignored:single", "Shank 1 Bank A", bankB });
+    shuffledSopCandidates.push_back ({ "ignored:ninth", "All Shanks 769-864", bankB });
+    const auto filteredSopPresets = retainNp2FourShankSopPresets (shuffledSopCandidates);
+    expectTrue (filteredSopPresets.size() == 8,
+                "NP2 four-shank publishes exactly eight SOP presets");
+    for (std::size_t index = 0; index < filteredSopPresets.size(); ++index)
+    {
+        expectEqual (filteredSopPresets[index].label, expectedSopPresets[index],
+                     "SOP preset order is stable");
+        expectEqual (filteredSopPresets[index].presetId,
+                     stablePresetId ("NP2013", expectedSopPresets[index]),
+                     "SOP preset id is stable");
+        expectEqual (canonicalElectrodeMapHash (filteredSopPresets[index].electrodeMap),
+                     canonicalElectrodeMapHash (bankA),
+                     "SOP preset map hash is preserved exactly");
+    }
+    shuffledSopCandidates.pop_back();
+    shuffledSopCandidates.erase (shuffledSopCandidates.begin());
+    expectTrue (retainNp2FourShankSopPresets (shuffledSopCandidates).empty(),
+                "incomplete eight-preset catalog fails closed");
 
     {
         auto refreshLease = operationGate.tryAcquireRefresh();
