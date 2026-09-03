@@ -13,8 +13,8 @@ inline ProbeStatus probeStatusFromSource (SourceStatus status)
         case SourceStatus::CONNECTING: return ProbeStatus::CONNECTING;
         case SourceStatus::CONNECTED: return ProbeStatus::CONNECTED;
         case SourceStatus::UPDATING: return ProbeStatus::UPDATING;
-        case SourceStatus::ACQUIRING: return ProbeStatus::ACQUIRING;
-        case SourceStatus::RECORDING: return ProbeStatus::RECORDING;
+        case SourceStatus::ACQUIRING:
+        case SourceStatus::RECORDING: return ProbeStatus::CONNECTED;
         case SourceStatus::DISABLED: return ProbeStatus::DISABLED;
     }
 

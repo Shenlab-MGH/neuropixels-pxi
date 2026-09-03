@@ -11,8 +11,6 @@ enum class ProbeStatus
     CONNECTING,
     CONNECTED,
     UPDATING,
-    ACQUIRING,
-    RECORDING,
     DISABLED
 };
 

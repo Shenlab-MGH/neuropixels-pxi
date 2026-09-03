@@ -35,6 +35,9 @@ int main()
 {
     using namespace neuropix::agent;
 
+    static_assert (static_cast<int> (ProbeStatus::DISABLED) == 4,
+                   "probe inventory exposes connection status only");
+
     Inventory inventory;
     inventory.plugin = "Neuropix-PXI";
     inventory.version = "2.1.1";
@@ -118,19 +121,17 @@ int main()
         { ProbeStatus::CONNECTING, "CONNECTING" },
         { ProbeStatus::CONNECTED, "CONNECTED" },
         { ProbeStatus::UPDATING, "UPDATING" },
-        { ProbeStatus::ACQUIRING, "ACQUIRING" },
-        { ProbeStatus::RECORDING, "RECORDING" },
         { ProbeStatus::DISABLED, "DISABLED" }
     };
 
     for (const auto& [value, expected] : statuses)
         expectEqual (probeStatusToString (value),
                      expected,
-                     "every official SourceStatus has a stable string");
+                     "every public probe connection status has a stable string");
 
     if (failures != 0)
         return 1;
 
-    std::cout << "PASS 18 inventory contract checks\n";
+    std::cout << "PASS 16 inventory contract checks\n";
     return 0;
 }

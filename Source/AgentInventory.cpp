@@ -118,8 +118,6 @@ std::string probeStatusToString (ProbeStatus status)
         case ProbeStatus::CONNECTING: return "CONNECTING";
         case ProbeStatus::CONNECTED: return "CONNECTED";
         case ProbeStatus::UPDATING: return "UPDATING";
-        case ProbeStatus::ACQUIRING: return "ACQUIRING";
-        case ProbeStatus::RECORDING: return "RECORDING";
         case ProbeStatus::DISABLED: return "DISABLED";
     }
 
