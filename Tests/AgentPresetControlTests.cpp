@@ -1,6 +1,7 @@
 #include "AgentPresetControl.h"
 
 #include <iostream>
+#include <set>
 #include <string>
 #include <thread>
 
@@ -192,6 +193,25 @@ int main()
     };
     expectTrue (np2FourShankSopPresetLabels() == expectedSopPresets,
                 "NP2 four-shank inventory pins the existing eight-block SOP order");
+    std::set<std::string> actualSopMapHashes;
+    for (std::size_t block = 0; block < expectedSopPresets.size(); ++block)
+    {
+        const auto indices = np2FourShankSopElectrodeIndices (expectedSopPresets[block]);
+        expectTrue (indices.size() == 384
+                        && indices.front() == static_cast<int> (block * 96)
+                        && indices.back() == static_cast<int> (block * 96 + 3 * 1280 + 95),
+                    "production and simulation use the exact SOP electrode map");
+        ElectrodeMap actualMap;
+        for (std::size_t channel = 0; channel < indices.size(); ++channel)
+            actualMap.push_back ({ static_cast<int> (channel),
+                                   static_cast<int> (channel / 96),
+                                   static_cast<int> (block), indices[channel] });
+        actualSopMapHashes.insert (canonicalElectrodeMapHash (actualMap));
+    }
+    expectTrue (actualSopMapHashes.size() == 8,
+                "the eight actual SOP electrode maps have distinct hashes");
+    expectTrue (np2FourShankSopElectrodeIndices ("All Shanks 769-864").empty(),
+                "non-SOP electrode maps fail closed");
     std::vector<Preset> shuffledSopCandidates;
     for (auto label = expectedSopPresets.rbegin(); label != expectedSopPresets.rend(); ++label)
         shuffledSopCandidates.push_back ({ stablePresetId ("NP2013", *label),
