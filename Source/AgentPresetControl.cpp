@@ -475,6 +475,8 @@ std::vector<Preset> retainNp2FourShankSopPresets (
         if (match != candidates.end())
             result.push_back (*match);
     }
+    if (result.size() != np2FourShankSopPresetLabels().size())
+        result.clear();
     return result;
 }
 
