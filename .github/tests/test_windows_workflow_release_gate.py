@@ -107,7 +107,7 @@ def main() -> int:
     assert "--no-tests=error" in contract_commands
 
     dependency_commands = text[sop_dependency_step:sop_integration_step]
-    pinned_commit = "cd10eb7cae9f9a5a95ca49ce9bf654c9ad29eecc"
+    pinned_commit = "ca9aec7a888e919a2e9aa851302694bb87a54383"
     assert "https://github.com/Shenlab-MGH/plugin-GUI.git" in dependency_commands
     assert pinned_commit in dependency_commands
     assert "git checkout --detach" in dependency_commands
@@ -126,6 +126,14 @@ def main() -> int:
     assert "ctest --test-dir Build -C Release" in export_commands
     assert "^neuropix_windows_plugin_exports$" in export_commands
     assert "--no-tests=error" in export_commands
+
+    setup_step = text.find("    - name: setup")
+    configure_step = text.find("    - name: configure")
+    assert setup_step >= 0 and setup_step < configure_step < export_step
+    setup_commands = text[setup_step:configure_step]
+    assert '-DBUILD_TESTS=OFF' in setup_commands, (
+        "production OE configure must explicitly exclude contract-test dependencies"
+    )
 
     repo = WORKFLOW.parents[2]
     ignored = subprocess.run(
