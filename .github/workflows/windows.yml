@@ -54,7 +54,7 @@ jobs:
         cd ../..
         git clone https://github.com/open-ephys/plugin-GUI.git --branch main --single-branch --depth 1
         cd plugin-GUI/Build
-        cmake -G "Visual Studio 17 2022" -A x64 .. 
+        cmake -G "Visual Studio 17 2022" -A x64 -DBUILD_TESTS=OFF ..
         mkdir Release && cd Release
         curl -L https://openephys.jfrog.io/artifactory/GUI-binaries/Libraries/open-ephys-lib-v1.0.0.zip --output open-ephys-lib.zip
         unzip open-ephys-lib.zip
@@ -86,8 +86,8 @@ jobs:
         cd ../..
         git clone --no-checkout https://github.com/Shenlab-MGH/plugin-GUI.git plugin-GUI-contract
         cd plugin-GUI-contract
-        git fetch --depth 1 origin cd10eb7cae9f9a5a95ca49ce9bf654c9ad29eecc
-        git checkout --detach cd10eb7cae9f9a5a95ca49ce9bf654c9ad29eecc
+        git fetch --depth 1 origin ca9aec7a888e919a2e9aa851302694bb87a54383
+        git checkout --detach ca9aec7a888e919a2e9aa851302694bb87a54383
         cmake -S . -B BuildContractTests -G "Visual Studio 17 2022" -A x64 -DBUILD_TESTS=ON -DOE_DONT_CHECK_BUILD_PATH=TRUE
         cmake --build BuildContractTests --config Release --target gui_testable_source --parallel 8
     - name: Test NP2 SOP production simulation parity
