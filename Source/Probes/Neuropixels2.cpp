@@ -24,6 +24,7 @@
 #include "Neuropixels2.h"
 #include "Geometry.h"
 
+#include "../AgentNp2SopMapProductionAdapter.h"
 #include "../NeuropixThread.h"
 
 #define MAXLEN 50
@@ -316,11 +317,12 @@ Array<int> Neuropixels2::selectElectrodeConfiguration (String config)
 {
     Array<int> selection;
 
-    const auto sopIndices = neuropix::agent::np2FourShankSopElectrodeIndices (
-        config.toStdString());
-    if (! sopIndices.empty())
+    const auto sopMap = neuropix::agent::productionNp2FourShankSopMap (
+        electrodeMetadata, config.toStdString());
+    if (! sopMap.empty())
     {
-        selection.addArray (sopIndices.data(), static_cast<int> (sopIndices.size()));
+        for (const auto& site : sopMap)
+            selection.add (site.electrodeIndex);
         return selection;
     }
 
@@ -478,102 +480,6 @@ Array<int> Neuropixels2::selectElectrodeConfiguration (String config)
         for (int i = startElectrode; i < startElectrode + 384; i++)
         {
             selection.add (i);
-        }
-    }
-    else if (config.equalsIgnoreCase ("All Shanks 1-96"))
-    {
-        int startElectrode = 0;
-
-        for (int shank = 0; shank < 4; shank++)
-        {
-            for (int i = startElectrode + 1280 * shank; i < startElectrode + 96 + 1280 * shank; i++)
-            {
-                selection.add (i);
-            }
-        }
-    }
-    else if (config.equalsIgnoreCase ("All Shanks 97-192"))
-    {
-        int startElectrode = 96;
-
-        for (int shank = 0; shank < 4; shank++)
-        {
-            for (int i = startElectrode + 1280 * shank; i < startElectrode + 96 + 1280 * shank; i++)
-            {
-                selection.add (i);
-            }
-        }
-    }
-    else if (config.equalsIgnoreCase ("All Shanks 193-288"))
-    {
-        int startElectrode = 192;
-
-        for (int shank = 0; shank < 4; shank++)
-        {
-            for (int i = startElectrode + 1280 * shank; i < startElectrode + 96 + 1280 * shank; i++)
-            {
-                selection.add (i);
-            }
-        }
-    }
-    else if (config.equalsIgnoreCase ("All Shanks 289-384"))
-    {
-        int startElectrode = 288;
-
-        for (int shank = 0; shank < 4; shank++)
-        {
-            for (int i = startElectrode + 1280 * shank; i < startElectrode + 96 + 1280 * shank; i++)
-            {
-                selection.add (i);
-            }
-        }
-    }
-    else if (config.equalsIgnoreCase ("All Shanks 385-480"))
-    {
-        int startElectrode = 384;
-
-        for (int shank = 0; shank < 4; shank++)
-        {
-            for (int i = startElectrode + 1280 * shank; i < startElectrode + 96 + 1280 * shank; i++)
-            {
-                selection.add (i);
-            }
-        }
-    }
-    else if (config.equalsIgnoreCase ("All Shanks 481-576"))
-    {
-        int startElectrode = 480;
-
-        for (int shank = 0; shank < 4; shank++)
-        {
-            for (int i = startElectrode + 1280 * shank; i < startElectrode + 96 + 1280 * shank; i++)
-            {
-                selection.add (i);
-            }
-        }
-    }
-    else if (config.equalsIgnoreCase ("All Shanks 577-672"))
-    {
-        int startElectrode = 576;
-
-        for (int shank = 0; shank < 4; shank++)
-        {
-            for (int i = startElectrode + 1280 * shank; i < startElectrode + 96 + 1280 * shank; i++)
-            {
-                selection.add (i);
-            }
-        }
-    }
-    else if (config.equalsIgnoreCase ("All Shanks 673-768"))
-    {
-        int startElectrode = 672;
-
-        for (int shank = 0; shank < 4; shank++)
-        {
-            for (int i = startElectrode + 1280 * shank; i < startElectrode + 96 + 1280 * shank; i++)
-            {
-                selection.add (i);
-            }
         }
     }
     else if (config.equalsIgnoreCase ("All Shanks 769-864"))

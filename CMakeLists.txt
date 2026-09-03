@@ -14,6 +14,9 @@ project(OE_PLUGIN_${PLUGIN_NAME})
 option(OE_AGENT_NEUROPIXELS_SIMULATION
     "Build a test-only no-hardware NP2.0 four-shank simulation path"
     OFF)
+option(OE_AGENT_BUILD_NP2_SOP_INTEGRATION_TESTS
+    "Build NP2 SOP parity tests without the vendor SDK"
+    OFF)
 set(CMAKE_SHARED_LIBRARY_PREFIX "")
 if(${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
 	set(LINUX 1)
@@ -85,6 +88,10 @@ if(MSVC)
 	target_link_libraries(${PLUGIN_NAME} ${GUI_BIN_DIR}/open-ephys.lib)
 	target_compile_options(${PLUGIN_NAME} PRIVATE /sdl- /W0)
 
+	if (OE_AGENT_BUILD_NP2_SOP_INTEGRATION_TESTS)
+		if (NOT GUI_CONTRACT_BUILD_DIR)
+			message(FATAL_ERROR "GUI_CONTRACT_BUILD_DIR is required for NP2 SOP integration tests")
+		endif()
 	add_executable(neuropix_agent_np2_sop_map_integration_tests
 		Tests/AgentNp2SopMapIntegrationTests.cpp
 		Source/AgentNp2SopMap.cpp
@@ -99,10 +106,15 @@ if(MSVC)
 		${GUI_BASE_DIR}/Plugins/Headers
 		${GUI_COMMONLIB_DIR}/include)
 	target_link_libraries(neuropix_agent_np2_sop_map_integration_tests
-		${GUI_BIN_DIR}/open-ephys.lib)
+		${GUI_CONTRACT_BUILD_DIR}/${CONFIGURATION_FOLDER}/gui_testable_source.lib)
 	target_compile_options(neuropix_agent_np2_sop_map_integration_tests PRIVATE /sdl- /W0)
+	add_custom_command(TARGET neuropix_agent_np2_sop_map_integration_tests POST_BUILD
+		COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+			"${GUI_CONTRACT_BUILD_DIR}/TestBin/common/${CONFIGURATION_FOLDER}/gui_testable_source.dll"
+			"$<TARGET_FILE_DIR:neuropix_agent_np2_sop_map_integration_tests>")
 	add_test(NAME neuropix_agent_np2_sop_map_integration
 		COMMAND neuropix_agent_np2_sop_map_integration_tests)
+	endif()
 	
 	install(TARGETS ${PLUGIN_NAME} RUNTIME DESTINATION ${GUI_BIN_DIR}/plugins  CONFIGURATIONS ${CMAKE_CONFIGURATION_TYPES})
 	install(FILES $<TARGET_PDB_FILE:${PLUGIN_NAME}> DESTINATION  ${GUI_BIN_DIR}/plugins OPTIONAL)
