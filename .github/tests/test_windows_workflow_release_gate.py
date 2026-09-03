@@ -89,17 +89,38 @@ def main() -> int:
         assert actual is expected, f"deploy matrix mismatch: {(event, ref, publish)} -> {actual}"
 
     contract_step = text.find("    - name: Test agent inventory contract")
+    sop_dependency_step = text.find("    - name: Build pinned OE 1.1 contract dependency")
+    sop_integration_step = text.find("    - name: Test NP2 SOP production simulation parity")
     export_step = text.find("    - name: Test Windows plugin exports")
     deploy_step = text.find("    - name: deploy")
     assert export_step >= 0, "Windows CI must verify the built plugin exports"
     assert export_step < contract_step, "plugin exports must pass before standalone contracts"
     assert contract_step >= 0, "Windows CI must run the standalone inventory contract"
     assert contract_step < deploy_step, "inventory contract must pass before deploy"
+    assert contract_step < sop_dependency_step < sop_integration_step < deploy_step, (
+        "pinned NP2 SOP integration gate must pass after standalone contracts and before deploy"
+    )
     contract_commands = text[contract_step:deploy_step]
     assert "cmake -S Tests -B Build-AgentInventory" in contract_commands
     assert "cmake --build Build-AgentInventory --config Release" in contract_commands
     assert "ctest --test-dir Build-AgentInventory -C Release" in contract_commands
     assert "--no-tests=error" in contract_commands
+
+    dependency_commands = text[sop_dependency_step:sop_integration_step]
+    pinned_commit = "cd10eb7cae9f9a5a95ca49ce9bf654c9ad29eecc"
+    assert "https://github.com/Shenlab-MGH/plugin-GUI.git" in dependency_commands
+    assert pinned_commit in dependency_commands
+    assert "git checkout --detach" in dependency_commands
+    assert "-DBUILD_TESTS=ON" in dependency_commands
+    assert "--target gui_testable_source" in dependency_commands
+
+    sop_commands = text[sop_integration_step:deploy_step]
+    assert "-DOE_AGENT_BUILD_NP2_SOP_INTEGRATION_TESTS=ON" in sop_commands
+    assert "-DGUI_CONTRACT_BUILD_DIR=" in sop_commands
+    assert "--target neuropix_agent_np2_sop_map_integration_tests" in sop_commands
+    assert "ctest --test-dir Build-Np2SopIntegration -C Release" in sop_commands
+    assert "^neuropix_agent_np2_sop_map_integration$" in sop_commands
+    assert "--no-tests=error" in sop_commands
 
     export_commands = text[export_step:contract_step]
     assert "ctest --test-dir Build -C Release" in export_commands
