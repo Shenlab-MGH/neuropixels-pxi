@@ -742,13 +742,18 @@ void NeuropixInterface::updateProbeSettingsInBackground()
 {
     ProbeSettings settings = getProbeSettings();
 
-    probe->updateSettings (settings);
+    if (! thread->tryBeginProbeSettingsWorker())
+    {
+        LOGC ("Cannot update probe settings while agent inventory or hardware operation is active.");
+        return;
+    }
 
     LOGD ("NeuropixInterface requesting thread start");
 
     editor->uiLoader->waitForThreadToExit (5000);
-    thread->updateProbeSettingsQueue (settings);
-    editor->uiLoader->startThread();
+    if (! thread->updateProbeSettingsQueue (settings)
+        || ! editor->uiLoader->startThread())
+        thread->finishProbeSettingsWorker();
 }
 
 void NeuropixInterface::comboBoxChanged (ComboBox* comboBox)

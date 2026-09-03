@@ -380,6 +380,12 @@ SettingsUpdater::SettingsUpdater (NeuropixCanvas* canvas_, ProbeSettings p) : Th
 {
     SettingsUpdater::currentThread = this;
 
+    if (! canvas->thread->tryBeginProbeSettingsWorker())
+    {
+        CoreServices::sendStatusMessage ("Probe settings are busy; no settings were changed.");
+        return;
+    }
+
     // Only update probes of the same type and with different names
     for (auto settingsInterface : canvas->settingsInterfaces)
     {
@@ -402,6 +408,7 @@ SettingsUpdater::SettingsUpdater (NeuropixCanvas* canvas_, ProbeSettings p) : Th
     }
     else
     {
+        canvas->thread->finishProbeSettingsWorker();
         CoreServices::sendStatusMessage ("No probes of same type found, not applying settings.");
     }
 }

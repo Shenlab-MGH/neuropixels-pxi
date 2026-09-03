@@ -316,6 +316,14 @@ Array<int> Neuropixels2::selectElectrodeConfiguration (String config)
 {
     Array<int> selection;
 
+    const auto sopIndices = neuropix::agent::np2FourShankSopElectrodeIndices (
+        config.toStdString());
+    if (! sopIndices.empty())
+    {
+        selection.addArray (sopIndices.data(), static_cast<int> (sopIndices.size()));
+        return selection;
+    }
+
     if (config.equalsIgnoreCase ("Bank A"))
     {
         for (int i = 0; i < 384; i++)

@@ -124,6 +124,27 @@ def main() -> int:
     assert ignored.returncode == 0, "the standard contract build directory must be ignored"
     assert overmatched.returncode == 1, "similarly named source paths must not be ignored"
 
+    source = repo / "Source"
+    interface = (source / "UI" / "NeuropixInterface.cpp").read_text(encoding="utf-8")
+    update_entry = interface[interface.index("void NeuropixInterface::updateProbeSettingsInBackground()"):
+                             interface.index("void NeuropixInterface::comboBoxChanged")]
+    assert update_entry.index("tryBeginProbeSettingsWorker") < update_entry.index("updateProbeSettingsQueue")
+    assert "probe->updateSettings" not in update_entry, "GUI must not mutate ProbeSettings before owning the gate"
+
+    canvas = (source / "NeuropixCanvas.cpp").read_text(encoding="utf-8")
+    updater_entry = canvas[canvas.index("SettingsUpdater::SettingsUpdater"):
+                           canvas.index("void SettingsUpdater::run")]
+    assert updater_entry.index("tryBeginProbeSettingsWorker") < updater_entry.index("applyProbeSettings")
+
+    editor = (source / "NeuropixEditor.cpp").read_text(encoding="utf-8")
+    initialize_entry = editor[editor.index("void NeuropixEditor::initialize"):
+                              editor.index("NeuropixEditor::~NeuropixEditor")]
+    assert initialize_entry.index("tryBeginProbeSettingsWorker") < initialize_entry.index("uiLoader->startThread")
+
+    thread = (source / "NeuropixThread.cpp").read_text(encoding="utf-8")
+    assert thread.count("updateAgentPresetSettingsQueue (updated)") == 2
+    assert "updateProbeSettingsQueue (updated)" not in thread
+
     print("Windows workflow release-gate matrix: PASS")
     return 0
 

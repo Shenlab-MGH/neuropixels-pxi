@@ -412,6 +412,21 @@ PresetHardwareOperationGate::tryAcquireRefresh()
     return Lease (*this, Operation::REFRESH);
 }
 
+bool PresetHardwareOperationGate::tryBeginSettingsWorker()
+{
+    const std::lock_guard<std::mutex> lock (mutex);
+    if (operation != Operation::IDLE)
+        return false;
+    operation = Operation::SETTINGS;
+    return true;
+}
+
+bool PresetHardwareOperationGate::tryContinueSettingsWorker() const
+{
+    const std::lock_guard<std::mutex> lock (mutex);
+    return operation == Operation::SETTINGS;
+}
+
 std::optional<PresetHardwareOperationGate::Lease>
 PresetHardwareOperationGate::tryAcquireInventory()
 {
@@ -443,6 +458,13 @@ void PresetHardwareOperationGate::finishInventory()
         operation = Operation::IDLE;
 }
 
+void PresetHardwareOperationGate::finishSettingsWorker()
+{
+    const std::lock_guard<std::mutex> lock (mutex);
+    if (operation == Operation::SETTINGS)
+        operation = Operation::IDLE;
+}
+
 bool PresetHardwareOperationGate::applyInProgress() const
 {
     const std::lock_guard<std::mutex> lock (mutex);
@@ -461,6 +483,21 @@ std::vector<std::string> np2FourShankSopPresetLabels()
              "All Shanks 193-288", "All Shanks 289-384",
              "All Shanks 385-480", "All Shanks 481-576",
              "All Shanks 577-672", "All Shanks 673-768" };
+}
+
+std::vector<int> np2FourShankSopElectrodeIndices (const std::string& label)
+{
+    const auto labels = np2FourShankSopPresetLabels();
+    const auto match = std::find (labels.begin(), labels.end(), label);
+    if (match == labels.end())
+        return {};
+    const auto block = static_cast<int> (std::distance (labels.begin(), match));
+    std::vector<int> result;
+    result.reserve (384);
+    for (int shank = 0; shank < 4; ++shank)
+        for (int offset = 0; offset < 96; ++offset)
+            result.push_back (block * 96 + shank * 1280 + offset);
+    return result;
 }
 
 std::vector<Preset> retainNp2FourShankSopPresets (

@@ -233,7 +233,11 @@ public:
     bool isInitialized() { return initializationComplete; }
 
     /** Adds a settings object to the background queue */
-    void updateProbeSettingsQueue (ProbeSettings settings);
+    bool tryBeginProbeSettingsWorker();
+    bool canRunProbeSettingsWorker() const;
+    void finishProbeSettingsWorker();
+    bool updateProbeSettingsQueue (ProbeSettings settings);
+    bool updateAgentPresetSettingsQueue (ProbeSettings settings);
 
     /** Applies all the settings in the current queue */
     void applyProbeSettingsQueue();

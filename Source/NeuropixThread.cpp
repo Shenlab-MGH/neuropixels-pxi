@@ -658,8 +658,28 @@ NeuropixThread::~NeuropixThread()
     closeConnection();
 }
 
-void NeuropixThread::updateProbeSettingsQueue (ProbeSettings settings)
+bool NeuropixThread::tryBeginProbeSettingsWorker()
 {
+    if (agentPresetHardwareOperation.tryContinueSettingsWorker())
+        return true;
+    return agentPresetHardwareOperation.tryBeginSettingsWorker();
+}
+
+bool NeuropixThread::canRunProbeSettingsWorker() const
+{
+    return agentPresetHardwareOperation.applyInProgress()
+           || agentPresetHardwareOperation.tryContinueSettingsWorker();
+}
+
+void NeuropixThread::finishProbeSettingsWorker()
+{
+    agentPresetHardwareOperation.finishSettingsWorker();
+}
+
+bool NeuropixThread::updateProbeSettingsQueue (ProbeSettings settings)
+{
+    if (! agentPresetHardwareOperation.tryContinueSettingsWorker())
+        return false;
     uint64 connectionEpoch;
     {
         const ScopedLock stateLock (agentPresetStateMutex);
@@ -667,6 +687,21 @@ void NeuropixThread::updateProbeSettingsQueue (ProbeSettings settings)
     }
     probeSettingsUpdateQueue.add (settings);
     probeSettingsUpdateEpochQueue.add (connectionEpoch);
+    return true;
+}
+
+bool NeuropixThread::updateAgentPresetSettingsQueue (ProbeSettings settings)
+{
+    if (! agentPresetHardwareOperation.applyInProgress())
+        return false;
+    uint64 connectionEpoch;
+    {
+        const ScopedLock stateLock (agentPresetStateMutex);
+        connectionEpoch = agentCommittedPresetStates.connectionEpoch();
+    }
+    probeSettingsUpdateQueue.add (settings);
+    probeSettingsUpdateEpochQueue.add (connectionEpoch);
+    return true;
 }
 
 void NeuropixThread::applyProbeSettingsQueue()
@@ -768,6 +803,7 @@ void NeuropixThread::applyProbeSettingsQueue()
 
     probeSettingsUpdateQueue.clear();
     probeSettingsUpdateEpochQueue.clear();
+    agentPresetHardwareOperation.finishSettingsWorker();
 
     // Show warning if any probes are uncalibrated
     if (uncalibratedProbes.size() > 0 && ! calibrationWarningShown)
@@ -821,6 +857,8 @@ void NeuropixThread::initialize (bool signalChainIsLoading)
     constexpr auto simulationPlan = neuropix::agent::simulationBuildPlan();
     if constexpr (simulationPlan.supportsHeadlessLifecycle)
     {
+        if (! tryBeginProbeSettingsWorker())
+            return;
         if (! initializationComplete)
             initializeBasestations (signalChainIsLoading);
 
@@ -2083,7 +2121,7 @@ String NeuropixThread::handleAgentPresetMessage (const String& jsonMessage)
         if (editor == nullptr)
         {
             configurationComplete = false;
-            updateProbeSettingsQueue (updated);
+            updateAgentPresetSettingsQueue (updated);
             applyGateRelease.release = false;
             applyProbeSettingsQueue();
             if (! configurationComplete
@@ -2103,7 +2141,7 @@ String NeuropixThread::handleAgentPresetMessage (const String& jsonMessage)
             return agentError ("preset_apply_in_progress", "Background settings worker is busy.");
 
         configurationComplete = false;
-        updateProbeSettingsQueue (updated);
+        updateAgentPresetSettingsQueue (updated);
         if (! editor->uiLoader->startThread())
         {
             probeSettingsUpdateQueue.clear();

@@ -565,6 +565,12 @@ void BackgroundLoader::run()
 {
     LOGC ("Running background thread...");
 
+    if (! thread->canRunProbeSettingsWorker())
+    {
+        LOGC ("Refusing settings worker while agent inventory or hardware operation is active.");
+        return;
+    }
+
     /* Initializes the NPX-PXI probe connections in the background to prevent this 
 	   plugin from blocking the main GUI*/
 
@@ -629,8 +635,14 @@ void NeuropixEditor::resetCanvas()
 
 void NeuropixEditor::initialize (bool signalChainIsLoading)
 {
+    if (! thread->tryBeginProbeSettingsWorker())
+    {
+        LOGC ("Cannot initialize while agent inventory or hardware operation is active.");
+        return;
+    }
     uiLoader->signalChainIsLoading = signalChainIsLoading;
-    uiLoader->startThread();
+    if (! uiLoader->startThread())
+        thread->finishProbeSettingsWorker();
 
     checkCanvas();
 }
