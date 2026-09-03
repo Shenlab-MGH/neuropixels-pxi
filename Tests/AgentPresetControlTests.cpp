@@ -2,6 +2,7 @@
 
 #include <iostream>
 #include <string>
+#include <thread>
 
 namespace
 {
@@ -141,6 +142,44 @@ int main()
     expectTrue (! operationGate.tryBeginRefresh(),
                 "preset apply blocks close-open hardware refresh");
     operationGate.finishApply();
+
+    {
+        auto inventoryLease = operationGate.tryAcquireInventory();
+        expectTrue (inventoryLease.has_value(),
+                    "inventory acquires the shared hardware-state synchronization domain");
+        bool concurrentApplyStarted = true;
+        std::thread concurrentApply ([&]
+        {
+            concurrentApplyStarted = operationGate.tryBeginApply();
+        });
+        concurrentApply.join();
+        expectTrue (! concurrentApplyStarted,
+                    "inventory snapshot excludes a concurrent preset apply");
+    }
+    expectTrue (operationGate.tryBeginApply(),
+                "inventory lease releases the synchronization domain");
+    expectTrue (! operationGate.tryAcquireInventory().has_value(),
+                "active preset apply makes inventory stably busy");
+    operationGate.finishApply();
+
+    const std::vector<std::string> expectedSopPresets {
+        "All Shanks 1-96", "All Shanks 97-192",
+        "All Shanks 193-288", "All Shanks 289-384",
+        "All Shanks 385-480", "All Shanks 481-576",
+        "All Shanks 577-672", "All Shanks 673-768"
+    };
+    expectTrue (np2FourShankSopPresetLabels() == expectedSopPresets,
+                "NP2 four-shank inventory pins the existing eight-block SOP order");
+    const auto filteredSopPresets = retainNp2FourShankSopPresets ({
+        { "ignored:single", "Shank 1 Bank A", bankA },
+        { "p:all-97", "All Shanks 97-192", bankB },
+        { "p:all-1", "All Shanks 1-96", bankA },
+        { "ignored:ninth", "All Shanks 769-864", bankB }
+    });
+    expectTrue (filteredSopPresets.size() == 2
+                    && filteredSopPresets[0].label == "All Shanks 1-96"
+                    && filteredSopPresets[1].label == "All Shanks 97-192",
+                "production and simulation share the exact SOP filter and order");
 
     {
         auto refreshLease = operationGate.tryAcquireRefresh();
