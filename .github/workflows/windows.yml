@@ -54,7 +54,7 @@ jobs:
         cd ../..
         git clone https://github.com/open-ephys/plugin-GUI.git --branch main --single-branch --depth 1
         cd plugin-GUI/Build
-        cmake -G "Visual Studio 17 2022" -A x64 .. 
+        cmake -G "Visual Studio 17 2022" -A x64 -DBUILD_TESTS=OFF ..
         mkdir Release && cd Release
         curl -L https://openephys.jfrog.io/artifactory/GUI-binaries/Libraries/open-ephys-lib-v1.0.0.zip --output open-ephys-lib.zip
         unzip open-ephys-lib.zip
@@ -71,12 +71,34 @@ jobs:
         cd Build
         msbuild INSTALL.vcxproj -p:Configuration=Release -p:Platform=x64
       shell: cmd
+    - name: Test Windows plugin exports
+      shell: pwsh
+      run: ctest --test-dir Build -C Release -R '^neuropix_windows_plugin_exports$' --output-on-failure --no-tests=error
     - name: Test agent inventory contract
       shell: pwsh
       run: |
         cmake -S Tests -B Build-AgentInventory -G "Visual Studio 17 2022" -A x64
         cmake --build Build-AgentInventory --config Release
         ctest --test-dir Build-AgentInventory -C Release --output-on-failure --no-tests=error
+    - name: Build pinned OE 1.1 contract dependency
+      shell: bash
+      run: |
+        cd ../..
+        git clone --no-checkout https://github.com/Shenlab-MGH/plugin-GUI.git plugin-GUI-contract
+        cd plugin-GUI-contract
+        git fetch --depth 1 origin ca9aec7a888e919a2e9aa851302694bb87a54383
+        git checkout --detach ca9aec7a888e919a2e9aa851302694bb87a54383
+        cmake -S . -B BuildContractTests -G "Visual Studio 17 2022" -A x64 -DBUILD_TESTS=ON -DOE_DONT_CHECK_BUILD_PATH=TRUE
+        cmake --build BuildContractTests --config Release --target gui_testable_source --parallel 8
+    - name: Test NP2 SOP production simulation parity
+      shell: bash
+      run: |
+        cmake -S . -B Build-Np2SopIntegration -G "Visual Studio 17 2022" -A x64 \
+          -DGUI_BASE_DIR="$PWD/../../plugin-GUI-contract" \
+          -DGUI_CONTRACT_BUILD_DIR="$PWD/../../plugin-GUI-contract/BuildContractTests" \
+          -DOE_AGENT_BUILD_NP2_SOP_INTEGRATION_TESTS=ON
+        cmake --build Build-Np2SopIntegration --config Release --target neuropix_agent_np2_sop_map_integration_tests --parallel 8
+        ctest --test-dir Build-Np2SopIntegration -C Release -R '^neuropix_agent_np2_sop_map_integration$' --output-on-failure --no-tests=error
     - name: deploy
       if: github.event_name == 'workflow_dispatch' && inputs.publish == true && github.ref == 'refs/heads/main'
       env:

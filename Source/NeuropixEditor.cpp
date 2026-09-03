@@ -450,6 +450,10 @@ BackgroundLoaderWithProgressWindow::BackgroundLoaderWithProgressWindow (Neuropix
 
 void BackgroundLoaderWithProgressWindow::updateProbeMap()
 {
+    // close/open below creates a new hardware connection epoch. Any prior
+    // SDK acknowledgment must not survive even when locator and serial match.
+    thread->invalidateAgentPresetConnectionEpoch();
+
     std::map<std::tuple<int, int, int>, std::pair<uint64, ProbeSettings>> updatedMap;
 
      ProbeSettings temp;
@@ -540,8 +544,6 @@ void BackgroundLoaderWithProgressWindow::run()
     setStatusMessage ("Checking for hardware changes...");
     LOGC ("Scanning for hardware changes...");
     updateProbeMap();
-
-    thread->isRefreshing = false;
 }
 
 BackgroundLoader::BackgroundLoader (NeuropixThread* thread_, NeuropixEditor* editor_)
@@ -562,6 +564,20 @@ BackgroundLoader::~BackgroundLoader()
 void BackgroundLoader::run()
 {
     LOGC ("Running background thread...");
+
+    const bool ownsSettings = thread->ownsProbeSettingsWorker();
+    struct SettingsOwnerRelease
+    {
+        NeuropixThread* thread;
+        bool active;
+        ~SettingsOwnerRelease() { if (active) thread->finishProbeSettingsWorker(); }
+    } settingsOwnerRelease { thread, ownsSettings };
+
+    if (! thread->canRunProbeSettingsWorker())
+    {
+        LOGC ("Refusing settings worker while agent inventory or hardware operation is active.");
+        return;
+    }
 
     /* Initializes the NPX-PXI probe connections in the background to prevent this 
 	   plugin from blocking the main GUI*/
@@ -627,8 +643,14 @@ void NeuropixEditor::resetCanvas()
 
 void NeuropixEditor::initialize (bool signalChainIsLoading)
 {
+    if (! thread->tryBeginProbeSettingsWorker())
+    {
+        LOGC ("Cannot initialize while agent inventory or hardware operation is active.");
+        return;
+    }
     uiLoader->signalChainIsLoading = signalChainIsLoading;
-    uiLoader->startThread();
+    if (! uiLoader->startThread())
+        thread->abortProbeSettingsWorker();
 
     checkCanvas();
 }
@@ -966,6 +988,19 @@ void NeuropixEditor::buttonClicked (Button* button)
         }
         else if (button == refreshButton.get())
         {
+            if (uiLoader->isThreadRunning()
+                || ! thread->probeSettingsUpdateQueue.isEmpty())
+            {
+                LOGC ("Cannot refresh hardware while probe settings are being applied.");
+                return;
+            }
+            auto refreshLease = thread->tryAcquireAgentPresetRefresh();
+            if (! refreshLease.has_value())
+            {
+                LOGC ("Cannot refresh hardware while a preset operation is active.");
+                return;
+            }
+
             for (auto& btn : sourceButtons)
             {
                 btn->setSourceStatus (SourceStatus::DISCONNECTED);
@@ -987,7 +1022,6 @@ void NeuropixEditor::buttonClicked (Button* button)
             }
             else
             {
-                thread->isRefreshing = true;
                 uiLoaderWithProgressWindow->runThread();
                 LOGD ("Finished refresh thread.");
             }

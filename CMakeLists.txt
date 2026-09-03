@@ -11,6 +11,12 @@ get_filename_component(PROJECT_FOLDER ${CMAKE_CURRENT_SOURCE_DIR} ABSOLUTE)
 get_filename_component(PLUGIN_NAME ${PROJECT_FOLDER} NAME)
 
 project(OE_PLUGIN_${PLUGIN_NAME})
+option(OE_AGENT_NEUROPIXELS_SIMULATION
+    "Build a test-only no-hardware NP2.0 four-shank simulation path"
+    OFF)
+option(OE_AGENT_BUILD_NP2_SOP_INTEGRATION_TESTS
+    "Build NP2 SOP parity tests without the vendor SDK"
+    OFF)
 set(CMAKE_SHARED_LIBRARY_PREFIX "")
 if(${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
 	set(LINUX 1)
@@ -46,7 +52,28 @@ else()
 endif()
 
 target_compile_features(${PLUGIN_NAME} PUBLIC cxx_auto_type cxx_generalized_initializers)
+if (OE_AGENT_NEUROPIXELS_SIMULATION)
+	target_compile_definitions(${PLUGIN_NAME} PRIVATE
+		OE_AGENT_NEUROPIXELS_SIMULATION=1)
+endif()
 target_include_directories(${PLUGIN_NAME} PUBLIC ${GUI_BASE_DIR}/JuceLibraryCode ${GUI_BASE_DIR}/JuceLibraryCode/modules ${GUI_BASE_DIR}/Plugins/Headers ${GUI_COMMONLIB_DIR}/include)
+
+if (WIN32 AND MSVC)
+	enable_testing()
+	get_filename_component(MSVC_TOOL_DIRECTORY "${CMAKE_LINKER}" DIRECTORY)
+	find_program(OE_PLUGIN_DUMPBIN_EXECUTABLE
+		NAMES dumpbin.exe dumpbin
+		HINTS "${MSVC_TOOL_DIRECTORY}"
+		NO_DEFAULT_PATH)
+	if (NOT OE_PLUGIN_DUMPBIN_EXECUTABLE)
+		message(FATAL_ERROR "dumpbin is required to verify Windows plugin exports")
+	endif()
+	add_test(NAME neuropix_windows_plugin_exports
+		COMMAND "${CMAKE_COMMAND}"
+			"-DPLUGIN_DLL=$<TARGET_FILE:${PLUGIN_NAME}>"
+			"-DDUMPBIN_EXECUTABLE=${OE_PLUGIN_DUMPBIN_EXECUTABLE}"
+			-P "${CMAKE_CURRENT_SOURCE_DIR}/Tests/VerifyWindowsPluginExports.cmake")
+endif()
 
 set(GUI_BIN_DIR ${GUI_BASE_DIR}/Build/${CONFIGURATION_FOLDER})
 
@@ -60,6 +87,34 @@ endif()
 if(MSVC)
 	target_link_libraries(${PLUGIN_NAME} ${GUI_BIN_DIR}/open-ephys.lib)
 	target_compile_options(${PLUGIN_NAME} PRIVATE /sdl- /W0)
+
+	if (OE_AGENT_BUILD_NP2_SOP_INTEGRATION_TESTS)
+		if (NOT GUI_CONTRACT_BUILD_DIR)
+			message(FATAL_ERROR "GUI_CONTRACT_BUILD_DIR is required for NP2 SOP integration tests")
+		endif()
+	add_executable(neuropix_agent_np2_sop_map_integration_tests
+		Tests/AgentNp2SopMapIntegrationTests.cpp
+		Source/AgentNp2SopMap.cpp
+		Source/AgentNp2SopMapProductionAdapter.cpp
+		Source/AgentNp2SopMapSimulationAdapter.cpp
+		Source/AgentPresetControl.cpp
+		Source/Probes/Geometry.cpp)
+	target_include_directories(neuropix_agent_np2_sop_map_integration_tests PRIVATE
+		${SOURCE_PATH}
+		${GUI_BASE_DIR}/JuceLibraryCode
+		${GUI_BASE_DIR}/JuceLibraryCode/modules
+		${GUI_BASE_DIR}/Plugins/Headers
+		${GUI_COMMONLIB_DIR}/include)
+	target_link_libraries(neuropix_agent_np2_sop_map_integration_tests
+		${GUI_CONTRACT_BUILD_DIR}/${CONFIGURATION_FOLDER}/gui_testable_source.lib)
+	target_compile_options(neuropix_agent_np2_sop_map_integration_tests PRIVATE /sdl- /W0)
+	add_custom_command(TARGET neuropix_agent_np2_sop_map_integration_tests POST_BUILD
+		COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+			"${GUI_CONTRACT_BUILD_DIR}/TestBin/common/${CONFIGURATION_FOLDER}/gui_testable_source.dll"
+			"$<TARGET_FILE_DIR:neuropix_agent_np2_sop_map_integration_tests>")
+	add_test(NAME neuropix_agent_np2_sop_map_integration
+		COMMAND neuropix_agent_np2_sop_map_integration_tests)
+	endif()
 	
 	install(TARGETS ${PLUGIN_NAME} RUNTIME DESTINATION ${GUI_BIN_DIR}/plugins  CONFIGURATIONS ${CMAKE_CONFIGURATION_TYPES})
 	install(FILES $<TARGET_PDB_FILE:${PLUGIN_NAME}> DESTINATION  ${GUI_BIN_DIR}/plugins OPTIONAL)

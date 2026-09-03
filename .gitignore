@@ -9,6 +9,7 @@
 
 Builds/*/*
 /Build-AgentInventory/
+/Build-Np2SopIntegration/
 
 
 # 3. OS-specific files

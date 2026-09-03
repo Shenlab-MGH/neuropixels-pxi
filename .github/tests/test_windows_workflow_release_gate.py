@@ -89,14 +89,51 @@ def main() -> int:
         assert actual is expected, f"deploy matrix mismatch: {(event, ref, publish)} -> {actual}"
 
     contract_step = text.find("    - name: Test agent inventory contract")
+    sop_dependency_step = text.find("    - name: Build pinned OE 1.1 contract dependency")
+    sop_integration_step = text.find("    - name: Test NP2 SOP production simulation parity")
+    export_step = text.find("    - name: Test Windows plugin exports")
     deploy_step = text.find("    - name: deploy")
+    assert export_step >= 0, "Windows CI must verify the built plugin exports"
+    assert export_step < contract_step, "plugin exports must pass before standalone contracts"
     assert contract_step >= 0, "Windows CI must run the standalone inventory contract"
     assert contract_step < deploy_step, "inventory contract must pass before deploy"
+    assert contract_step < sop_dependency_step < sop_integration_step < deploy_step, (
+        "pinned NP2 SOP integration gate must pass after standalone contracts and before deploy"
+    )
     contract_commands = text[contract_step:deploy_step]
     assert "cmake -S Tests -B Build-AgentInventory" in contract_commands
     assert "cmake --build Build-AgentInventory --config Release" in contract_commands
     assert "ctest --test-dir Build-AgentInventory -C Release" in contract_commands
     assert "--no-tests=error" in contract_commands
+
+    dependency_commands = text[sop_dependency_step:sop_integration_step]
+    pinned_commit = "ca9aec7a888e919a2e9aa851302694bb87a54383"
+    assert "https://github.com/Shenlab-MGH/plugin-GUI.git" in dependency_commands
+    assert pinned_commit in dependency_commands
+    assert "git checkout --detach" in dependency_commands
+    assert "-DBUILD_TESTS=ON" in dependency_commands
+    assert "--target gui_testable_source" in dependency_commands
+
+    sop_commands = text[sop_integration_step:deploy_step]
+    assert "-DOE_AGENT_BUILD_NP2_SOP_INTEGRATION_TESTS=ON" in sop_commands
+    assert "-DGUI_CONTRACT_BUILD_DIR=" in sop_commands
+    assert "--target neuropix_agent_np2_sop_map_integration_tests" in sop_commands
+    assert "ctest --test-dir Build-Np2SopIntegration -C Release" in sop_commands
+    assert "^neuropix_agent_np2_sop_map_integration$" in sop_commands
+    assert "--no-tests=error" in sop_commands
+
+    export_commands = text[export_step:contract_step]
+    assert "ctest --test-dir Build -C Release" in export_commands
+    assert "^neuropix_windows_plugin_exports$" in export_commands
+    assert "--no-tests=error" in export_commands
+
+    setup_step = text.find("    - name: setup")
+    configure_step = text.find("    - name: configure")
+    assert setup_step >= 0 and setup_step < configure_step < export_step
+    setup_commands = text[setup_step:configure_step]
+    assert '-DBUILD_TESTS=OFF' in setup_commands, (
+        "production OE configure must explicitly exclude contract-test dependencies"
+    )
 
     repo = WORKFLOW.parents[2]
     ignored = subprocess.run(
@@ -115,6 +152,44 @@ def main() -> int:
     )
     assert ignored.returncode == 0, "the standard contract build directory must be ignored"
     assert overmatched.returncode == 1, "similarly named source paths must not be ignored"
+
+    source = repo / "Source"
+    interface = (source / "UI" / "NeuropixInterface.cpp").read_text(encoding="utf-8")
+    update_entry = interface[interface.index("void NeuropixInterface::updateProbeSettingsInBackground()"):
+                             interface.index("void NeuropixInterface::comboBoxChanged")]
+    assert update_entry.index("tryBeginProbeSettingsWorker") < update_entry.index("updateProbeSettingsQueue")
+    assert update_entry.index("waitForThreadToExit (5000)") < update_entry.index("tryBeginProbeSettingsWorker")
+    assert "abortProbeSettingsWorker" in update_entry
+    assert "probe->updateSettings" not in update_entry, "GUI must not mutate ProbeSettings before owning the gate"
+
+    canvas = (source / "NeuropixCanvas.cpp").read_text(encoding="utf-8")
+    updater_constructor = canvas[canvas.index("SettingsUpdater::SettingsUpdater"):
+                                 canvas.index("void SettingsUpdater::run")]
+    assert updater_constructor.index("tryBeginProbeSettingsWorker") < updater_constructor.index("applyProbeSettings")
+    assert "settingsBatch.add" in updater_constructor
+    updater_entry = canvas[canvas.index("void SettingsUpdater::run"):]
+    assert "applyProbeSettings" not in updater_entry
+    assert "ComboBox" not in updater_entry and "repaint" not in updater_entry
+    assert updater_entry.index("updateProbeSettingsQueue") < updater_entry.index("startThread")
+    assert updater_entry.index("waitForThreadToExit (5000)") > updater_entry.index("startThread")
+    assert "abortProbeSettingsWorker" in updater_entry
+
+    editor = (source / "NeuropixEditor.cpp").read_text(encoding="utf-8")
+    initialize_entry = editor[editor.index("void NeuropixEditor::initialize"):
+                              editor.index("NeuropixEditor::~NeuropixEditor")]
+    assert initialize_entry.index("tryBeginProbeSettingsWorker") < initialize_entry.index("uiLoader->startThread")
+    assert "abortProbeSettingsWorker" in initialize_entry
+
+    loader_entry = editor[editor.index("void BackgroundLoader::run"):
+                          editor.index("void NeuropixEditor::resetCanvas")]
+    assert loader_entry.index("SettingsOwnerRelease") < loader_entry.index("initializeBasestations")
+    assert "finishProbeSettingsWorker" in loader_entry
+
+    thread = (source / "NeuropixThread.cpp").read_text(encoding="utf-8")
+    assert thread.count("updateAgentPresetSettingsQueue (updated)") == 2
+    assert "updateProbeSettingsQueue (updated)" not in thread
+    assert "|| ! probeSettingsUpdateQueue.isEmpty()" in thread
+    assert "probeSettingsUpdateQueue.clear();" in thread
 
     print("Windows workflow release-gate matrix: PASS")
     return 0

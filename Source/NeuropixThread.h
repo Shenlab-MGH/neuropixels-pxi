@@ -26,9 +26,11 @@
 
 #include <DataThreadHeaders.h>
 #include <stdio.h>
+#include <atomic>
 #include <string.h>
 
 #include "NeuropixComponents.h"
+#include "AgentPresetControl.h"
 
 #define PLUGIN_VERSION "2.1.1"
 
@@ -200,6 +202,15 @@ public:
     /** Returns a JSON-formatted string with info about all connected probes*/
     String getProbeInfoString();
 
+    /** Handles the closed, versioned Neuropixels preset agent envelope. */
+    String handleAgentPresetMessage (const String& jsonMessage);
+
+    /** Invalidates SDK-acknowledged preset state before hardware reopen/rescan. */
+    void invalidateAgentPresetConnectionEpoch();
+    std::optional<neuropix::agent::PresetHardwareOperationGate::Lease>
+        tryAcquireAgentPresetRefresh();
+    bool isAgentPresetRefreshInProgress() const;
+
     /** Returns pointer to active DataSources (probes + ADCs)*/
     Array<DataSource*> getDataSources();
 
@@ -222,7 +233,13 @@ public:
     bool isInitialized() { return initializationComplete; }
 
     /** Adds a settings object to the background queue */
-    void updateProbeSettingsQueue (ProbeSettings settings);
+    bool tryBeginProbeSettingsWorker();
+    bool canRunProbeSettingsWorker() const;
+    bool ownsProbeSettingsWorker() const;
+    void finishProbeSettingsWorker();
+    void abortProbeSettingsWorker();
+    bool updateProbeSettingsQueue (ProbeSettings settings);
+    bool updateAgentPresetSettingsQueue (ProbeSettings settings);
 
     /** Applies all the settings in the current queue */
     void applyProbeSettingsQueue();
@@ -258,8 +275,6 @@ public:
     /** Map from <slot,port,dock> to <probe_serial, probe_settings> */
     std::map<std::tuple<int,int,int>, std::pair<uint64, ProbeSettings>> probeMap;
 
-    bool isRefreshing = false;
-
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (NeuropixThread);
 
 private:
@@ -272,6 +287,13 @@ private:
 
     bool initializationComplete;
     bool configurationComplete;
+
+    mutable CriticalSection agentPresetStateMutex;
+    neuropix::agent::CommittedPresetStateCache agentCommittedPresetStates;
+    neuropix::agent::PresetHardwareOperationGate agentPresetHardwareOperation;
+    std::optional<std::uint64_t> agentSettingsWorkerOwner;
+    Array<uint64> probeSettingsUpdateEpochQueue;
+    uint64 agentPresetOperationCounter = 0;
 
     long int counter;
 
@@ -299,7 +321,7 @@ private:
 
     NeuropixAPIv3 api_v3;
 
-    NeuropixEditor* editor; 
+    NeuropixEditor* editor = nullptr;
 };
 
 #endif // __NEUROPIXTHREAD_H_2C4CBD67__

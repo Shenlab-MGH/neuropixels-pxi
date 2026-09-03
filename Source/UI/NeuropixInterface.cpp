@@ -742,13 +742,24 @@ void NeuropixInterface::updateProbeSettingsInBackground()
 {
     ProbeSettings settings = getProbeSettings();
 
-    probe->updateSettings (settings);
+    if (editor->uiLoader->isThreadRunning()
+        && ! editor->uiLoader->waitForThreadToExit (5000))
+    {
+        LOGC ("Timed out waiting for the existing settings worker; no settings were queued.");
+        return;
+    }
+
+    if (! thread->tryBeginProbeSettingsWorker())
+    {
+        LOGC ("Cannot update probe settings while agent inventory or hardware operation is active.");
+        return;
+    }
 
     LOGD ("NeuropixInterface requesting thread start");
 
-    editor->uiLoader->waitForThreadToExit (5000);
-    thread->updateProbeSettingsQueue (settings);
-    editor->uiLoader->startThread();
+    if (! thread->updateProbeSettingsQueue (settings)
+        || ! editor->uiLoader->startThread())
+        thread->abortProbeSettingsWorker();
 }
 
 void NeuropixInterface::comboBoxChanged (ComboBox* comboBox)
@@ -1479,7 +1490,7 @@ void NeuropixInterface::paint (Graphics& g)
 
 void NeuropixInterface::drawLegend (Graphics& g)
 {
-    if (thread->isRefreshing)
+    if (thread->isAgentPresetRefreshInProgress())
         return;
     g.setColour (findColour (ThemeColours::defaultText).withAlpha (0.75f));
     g.setFont (15);
