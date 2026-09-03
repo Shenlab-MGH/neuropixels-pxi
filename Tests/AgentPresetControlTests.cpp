@@ -144,19 +144,25 @@ int main()
                 "preset apply blocks close-open hardware refresh");
     operationGate.finishApply();
 
-    expectTrue (operationGate.tryBeginSettingsWorker(),
+    auto firstSettingsOwner = operationGate.tryBeginSettingsWorker();
+    expectTrue (firstSettingsOwner.has_value(),
                 "ordinary settings worker enters the shared operation domain");
     expectTrue (! operationGate.tryAcquireInventory().has_value()
                     && ! operationGate.tryBeginApply()
                     && ! operationGate.tryBeginRefresh(),
                 "ordinary settings worker excludes inventory agent SET and refresh");
-    expectTrue (operationGate.tryContinueSettingsWorker(),
-                "one GUI settings batch may enqueue multiple probes");
-    operationGate.finishSettingsWorker();
+    expectTrue (! operationGate.tryBeginSettingsWorker().has_value(),
+                "a second top-level GUI caller cannot join a settings batch");
+    expectTrue (operationGate.isSettingsWorkerOwner (*firstSettingsOwner),
+                "settings batch has an unforgeable owner token");
+    operationGate.finishSettingsWorker (*firstSettingsOwner + 1);
+    expectTrue (operationGate.isSettingsWorkerOwner (*firstSettingsOwner),
+                "a foreign token cannot finish another settings operation");
+    operationGate.finishSettingsWorker (*firstSettingsOwner);
     {
         auto inventoryLease = operationGate.tryAcquireInventory();
         expectTrue (inventoryLease.has_value()
-                        && ! operationGate.tryBeginSettingsWorker(),
+                        && ! operationGate.tryBeginSettingsWorker().has_value(),
                     "inventory lease prevents a real settings worker start");
     }
 
