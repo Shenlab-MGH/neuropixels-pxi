@@ -412,19 +412,21 @@ PresetHardwareOperationGate::tryAcquireRefresh()
     return Lease (*this, Operation::REFRESH);
 }
 
-bool PresetHardwareOperationGate::tryBeginSettingsWorker()
+std::optional<std::uint64_t> PresetHardwareOperationGate::tryBeginSettingsWorker()
 {
     const std::lock_guard<std::mutex> lock (mutex);
     if (operation != Operation::IDLE)
-        return false;
+        return std::nullopt;
     operation = Operation::SETTINGS;
-    return true;
+    settingsOwner = ++nextSettingsOwner;
+    return settingsOwner;
 }
 
-bool PresetHardwareOperationGate::tryContinueSettingsWorker() const
+bool PresetHardwareOperationGate::isSettingsWorkerOwner (
+    std::uint64_t owner) const
 {
     const std::lock_guard<std::mutex> lock (mutex);
-    return operation == Operation::SETTINGS;
+    return operation == Operation::SETTINGS && settingsOwner == owner;
 }
 
 std::optional<PresetHardwareOperationGate::Lease>
@@ -458,11 +460,14 @@ void PresetHardwareOperationGate::finishInventory()
         operation = Operation::IDLE;
 }
 
-void PresetHardwareOperationGate::finishSettingsWorker()
+void PresetHardwareOperationGate::finishSettingsWorker (std::uint64_t owner)
 {
     const std::lock_guard<std::mutex> lock (mutex);
-    if (operation == Operation::SETTINGS)
+    if (operation == Operation::SETTINGS && settingsOwner == owner)
+    {
         operation = Operation::IDLE;
+        settingsOwner = 0;
+    }
 }
 
 bool PresetHardwareOperationGate::applyInProgress() const

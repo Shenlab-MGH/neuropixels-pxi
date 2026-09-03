@@ -105,20 +105,22 @@ public:
 
     bool tryBeginApply();
     bool tryBeginRefresh();
-    bool tryBeginSettingsWorker();
-    bool tryContinueSettingsWorker() const;
+    std::optional<std::uint64_t> tryBeginSettingsWorker();
+    bool isSettingsWorkerOwner (std::uint64_t owner) const;
     std::optional<Lease> tryAcquireRefresh();
     std::optional<Lease> tryAcquireInventory();
     void finishApply();
     void finishRefresh();
     void finishInventory();
-    void finishSettingsWorker();
+    void finishSettingsWorker (std::uint64_t owner);
     bool applyInProgress() const;
     bool refreshInProgress() const;
 
 private:
     mutable std::mutex mutex;
     Operation operation = Operation::IDLE;
+    std::uint64_t settingsOwner = 0;
+    std::uint64_t nextSettingsOwner = 0;
 };
 
 std::string stablePresetId (const std::string& probePartNumber,

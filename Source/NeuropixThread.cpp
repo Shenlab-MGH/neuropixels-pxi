@@ -660,29 +660,40 @@ NeuropixThread::~NeuropixThread()
 
 bool NeuropixThread::tryBeginProbeSettingsWorker()
 {
-    if (agentPresetHardwareOperation.tryContinueSettingsWorker())
-        return true;
-    return agentPresetHardwareOperation.tryBeginSettingsWorker();
+    const ScopedLock stateLock (agentPresetStateMutex);
+    if (agentSettingsWorkerOwner.has_value())
+        return false;
+    agentSettingsWorkerOwner = agentPresetHardwareOperation.tryBeginSettingsWorker();
+    return agentSettingsWorkerOwner.has_value();
 }
 
 bool NeuropixThread::canRunProbeSettingsWorker() const
 {
+    const ScopedLock stateLock (agentPresetStateMutex);
     return agentPresetHardwareOperation.applyInProgress()
-           || agentPresetHardwareOperation.tryContinueSettingsWorker();
+           || (agentSettingsWorkerOwner.has_value()
+               && agentPresetHardwareOperation.isSettingsWorkerOwner (
+                   *agentSettingsWorkerOwner));
 }
 
 void NeuropixThread::finishProbeSettingsWorker()
 {
-    agentPresetHardwareOperation.finishSettingsWorker();
+    const ScopedLock stateLock (agentPresetStateMutex);
+    if (! agentSettingsWorkerOwner.has_value())
+        return;
+    agentPresetHardwareOperation.finishSettingsWorker (*agentSettingsWorkerOwner);
+    agentSettingsWorkerOwner.reset();
 }
 
 bool NeuropixThread::updateProbeSettingsQueue (ProbeSettings settings)
 {
-    if (! agentPresetHardwareOperation.tryContinueSettingsWorker())
-        return false;
     uint64 connectionEpoch;
     {
         const ScopedLock stateLock (agentPresetStateMutex);
+        if (! agentSettingsWorkerOwner.has_value()
+            || ! agentPresetHardwareOperation.isSettingsWorkerOwner (
+                *agentSettingsWorkerOwner))
+            return false;
         connectionEpoch = agentCommittedPresetStates.connectionEpoch();
     }
     probeSettingsUpdateQueue.add (settings);
@@ -803,7 +814,7 @@ void NeuropixThread::applyProbeSettingsQueue()
 
     probeSettingsUpdateQueue.clear();
     probeSettingsUpdateEpochQueue.clear();
-    agentPresetHardwareOperation.finishSettingsWorker();
+    finishProbeSettingsWorker();
 
     // Show warning if any probes are uncalibrated
     if (uncalibratedProbes.size() > 0 && ! calibrationWarningShown)

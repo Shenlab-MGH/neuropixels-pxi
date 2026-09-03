@@ -129,12 +129,13 @@ def main() -> int:
     update_entry = interface[interface.index("void NeuropixInterface::updateProbeSettingsInBackground()"):
                              interface.index("void NeuropixInterface::comboBoxChanged")]
     assert update_entry.index("tryBeginProbeSettingsWorker") < update_entry.index("updateProbeSettingsQueue")
+    assert update_entry.index("waitForThreadToExit (5000)") < update_entry.index("tryBeginProbeSettingsWorker")
     assert "probe->updateSettings" not in update_entry, "GUI must not mutate ProbeSettings before owning the gate"
 
     canvas = (source / "NeuropixCanvas.cpp").read_text(encoding="utf-8")
-    updater_entry = canvas[canvas.index("SettingsUpdater::SettingsUpdater"):
-                           canvas.index("void SettingsUpdater::run")]
+    updater_entry = canvas[canvas.index("void SettingsUpdater::run"):]
     assert updater_entry.index("tryBeginProbeSettingsWorker") < updater_entry.index("applyProbeSettings")
+    assert updater_entry.index("waitForThreadToExit (5000)") > updater_entry.index("startThread")
 
     editor = (source / "NeuropixEditor.cpp").read_text(encoding="utf-8")
     initialize_entry = editor[editor.index("void NeuropixEditor::initialize"):

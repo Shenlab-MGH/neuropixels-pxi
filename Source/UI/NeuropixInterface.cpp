@@ -742,6 +742,13 @@ void NeuropixInterface::updateProbeSettingsInBackground()
 {
     ProbeSettings settings = getProbeSettings();
 
+    if (editor->uiLoader->isThreadRunning()
+        && ! editor->uiLoader->waitForThreadToExit (5000))
+    {
+        LOGC ("Timed out waiting for the existing settings worker; no settings were queued.");
+        return;
+    }
+
     if (! thread->tryBeginProbeSettingsWorker())
     {
         LOGC ("Cannot update probe settings while agent inventory or hardware operation is active.");
@@ -750,7 +757,6 @@ void NeuropixInterface::updateProbeSettingsInBackground()
 
     LOGD ("NeuropixInterface requesting thread start");
 
-    editor->uiLoader->waitForThreadToExit (5000);
     if (! thread->updateProbeSettingsQueue (settings)
         || ! editor->uiLoader->startThread())
         thread->finishProbeSettingsWorker();

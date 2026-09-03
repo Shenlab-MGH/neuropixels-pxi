@@ -286,9 +286,10 @@ private:
     bool initializationComplete;
     bool configurationComplete;
 
-    CriticalSection agentPresetStateMutex;
+    mutable CriticalSection agentPresetStateMutex;
     neuropix::agent::CommittedPresetStateCache agentCommittedPresetStates;
     neuropix::agent::PresetHardwareOperationGate agentPresetHardwareOperation;
+    std::optional<std::uint64_t> agentSettingsWorkerOwner;
     Array<uint64> probeSettingsUpdateEpochQueue;
     uint64 agentPresetOperationCounter = 0;
 

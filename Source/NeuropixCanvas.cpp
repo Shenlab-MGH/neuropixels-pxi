@@ -380,12 +380,6 @@ SettingsUpdater::SettingsUpdater (NeuropixCanvas* canvas_, ProbeSettings p) : Th
 {
     SettingsUpdater::currentThread = this;
 
-    if (! canvas->thread->tryBeginProbeSettingsWorker())
-    {
-        CoreServices::sendStatusMessage ("Probe settings are busy; no settings were changed.");
-        return;
-    }
-
     // Only update probes of the same type and with different names
     for (auto settingsInterface : canvas->settingsInterfaces)
     {
@@ -394,7 +388,6 @@ SettingsUpdater::SettingsUpdater (NeuropixCanvas* canvas_, ProbeSettings p) : Th
             NeuropixInterface* ni = (NeuropixInterface*) settingsInterface;
             if (ni->probe->type == settings.probe->type && ni->probe->getName() != settings.probe->getName())
             {
-                ni->applyProbeSettings (settings, false);
                 numProbesToUpdate++;
             }
         }
@@ -408,7 +401,6 @@ SettingsUpdater::SettingsUpdater (NeuropixCanvas* canvas_, ProbeSettings p) : Th
     }
     else
     {
-        canvas->thread->finishProbeSettingsWorker();
         CoreServices::sendStatusMessage ("No probes of same type found, not applying settings.");
     }
 }
@@ -425,17 +417,39 @@ void SettingsUpdater::run()
             NeuropixInterface* ni = (NeuropixInterface*) settingsInterface;
             if (ni->probe->type == settings.probe->type && settings.probe->getName() != ni->probe->getName())
             {
+                if (! canvas->thread->tryBeginProbeSettingsWorker())
+                {
+                    CoreServices::sendStatusMessage (
+                        "Probe settings are busy; batch stopped without changing another probe.");
+                    return;
+                }
+                ni->applyProbeSettings (settings, false);
+                const auto queuedSettings = ni->getProbeSettings();
+                if (! canvas->thread->updateProbeSettingsQueue (queuedSettings))
+                {
+                    canvas->thread->finishProbeSettingsWorker();
+                    return;
+                }
+                if (! canvas->editor->uiLoader->startThread())
+                {
+                    canvas->thread->finishProbeSettingsWorker();
+                    return;
+                }
                 count++;
                 this->setStatusMessage ("Updating settings for " + ni->probe->getName() + " (" + String (count) + " of " + String (numProbesToUpdate) + ")");
-                ni->updateProbeSettingsInBackground();
                 float updateTime = 1000.0; // milliseconds
                 for (float fraction = 0.0; fraction < 1.0; fraction += 0.01)
                 {
                     currentThread->setProgress (float (count + fraction - 1) / float (numProbesToUpdate));
                     Time::waitForMillisecondCounter (Time::getMillisecondCounter() + updateTime / 100.0);
                 }
-                while (canvas->editor->uiLoader->isThreadRunning())
-                    Time::waitForMillisecondCounter (10);
+                if (canvas->editor->uiLoader->isThreadRunning()
+                    && ! canvas->editor->uiLoader->waitForThreadToExit (5000))
+                {
+                    CoreServices::sendStatusMessage (
+                        "Timed out waiting for probe settings; batch stopped without appending work.");
+                    return;
+                }
             }
         }
     }
