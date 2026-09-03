@@ -84,6 +84,25 @@ endif()
 if(MSVC)
 	target_link_libraries(${PLUGIN_NAME} ${GUI_BIN_DIR}/open-ephys.lib)
 	target_compile_options(${PLUGIN_NAME} PRIVATE /sdl- /W0)
+
+	add_executable(neuropix_agent_np2_sop_map_integration_tests
+		Tests/AgentNp2SopMapIntegrationTests.cpp
+		Source/AgentNp2SopMap.cpp
+		Source/AgentNp2SopMapProductionAdapter.cpp
+		Source/AgentNp2SopMapSimulationAdapter.cpp
+		Source/AgentPresetControl.cpp
+		Source/Probes/Geometry.cpp)
+	target_include_directories(neuropix_agent_np2_sop_map_integration_tests PRIVATE
+		${SOURCE_PATH}
+		${GUI_BASE_DIR}/JuceLibraryCode
+		${GUI_BASE_DIR}/JuceLibraryCode/modules
+		${GUI_BASE_DIR}/Plugins/Headers
+		${GUI_COMMONLIB_DIR}/include)
+	target_link_libraries(neuropix_agent_np2_sop_map_integration_tests
+		${GUI_BIN_DIR}/open-ephys.lib)
+	target_compile_options(neuropix_agent_np2_sop_map_integration_tests PRIVATE /sdl- /W0)
+	add_test(NAME neuropix_agent_np2_sop_map_integration
+		COMMAND neuropix_agent_np2_sop_map_integration_tests)
 	
 	install(TARGETS ${PLUGIN_NAME} RUNTIME DESTINATION ${GUI_BIN_DIR}/plugins  CONFIGURATIONS ${CMAKE_CONFIGURATION_TYPES})
 	install(FILES $<TARGET_PDB_FILE:${PLUGIN_NAME}> DESTINATION  ${GUI_BIN_DIR}/plugins OPTIONAL)
