@@ -378,6 +378,8 @@ PresetHardwareOperationGate::Lease::~Lease()
         return;
     if (operation == Operation::REFRESH)
         gate->finishRefresh();
+    else if (operation == Operation::INVENTORY)
+        gate->finishInventory();
     else if (operation == Operation::APPLY)
         gate->finishApply();
 }
@@ -410,6 +412,16 @@ PresetHardwareOperationGate::tryAcquireRefresh()
     return Lease (*this, Operation::REFRESH);
 }
 
+std::optional<PresetHardwareOperationGate::Lease>
+PresetHardwareOperationGate::tryAcquireInventory()
+{
+    const std::lock_guard<std::mutex> lock (mutex);
+    if (operation != Operation::IDLE)
+        return std::nullopt;
+    operation = Operation::INVENTORY;
+    return Lease (*this, Operation::INVENTORY);
+}
+
 void PresetHardwareOperationGate::finishApply()
 {
     const std::lock_guard<std::mutex> lock (mutex);
@@ -424,6 +436,13 @@ void PresetHardwareOperationGate::finishRefresh()
         operation = Operation::IDLE;
 }
 
+void PresetHardwareOperationGate::finishInventory()
+{
+    const std::lock_guard<std::mutex> lock (mutex);
+    if (operation == Operation::INVENTORY)
+        operation = Operation::IDLE;
+}
+
 bool PresetHardwareOperationGate::applyInProgress() const
 {
     const std::lock_guard<std::mutex> lock (mutex);
@@ -434,6 +453,29 @@ bool PresetHardwareOperationGate::refreshInProgress() const
 {
     const std::lock_guard<std::mutex> lock (mutex);
     return operation == Operation::REFRESH;
+}
+
+std::vector<std::string> np2FourShankSopPresetLabels()
+{
+    return { "All Shanks 1-96", "All Shanks 97-192",
+             "All Shanks 193-288", "All Shanks 289-384",
+             "All Shanks 385-480", "All Shanks 481-576",
+             "All Shanks 577-672", "All Shanks 673-768" };
+}
+
+std::vector<Preset> retainNp2FourShankSopPresets (
+    const std::vector<Preset>& candidates)
+{
+    std::vector<Preset> result;
+    for (const auto& label : np2FourShankSopPresetLabels())
+    {
+        const auto match = std::find_if (
+            candidates.begin(), candidates.end(), [&label] (const auto& preset)
+            { return preset.label == label; });
+        if (match != candidates.end())
+            result.push_back (*match);
+    }
+    return result;
 }
 
 std::optional<ElectrodeMap> CommittedPresetStateCache::resolve (

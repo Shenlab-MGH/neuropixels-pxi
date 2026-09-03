@@ -124,6 +124,8 @@ neuropix::agent::PresetInventory presetInventoryForProbe (Probe& probe,
                                                        label.toStdString()),
                                        label.toStdString(), std::move (map) });
     }
+    if (probe.type == ProbeType::NP2_4)
+        inventory.presets = retainNp2FourShankSopPresets (inventory.presets);
     return inventory;
 }
 
@@ -1885,6 +1887,11 @@ String NeuropixThread::handleAgentPresetMessage (const String& jsonMessage)
         return agentError ("preset_apply_in_progress",
                            "Neuropixels hardware refresh is in progress.");
 
+    auto inventoryLease = agentPresetHardwareOperation.tryAcquireInventory();
+    if (! inventoryLease.has_value())
+        return agentError ("preset_apply_in_progress",
+                           "Neuropixels hardware state is changing.");
+
     std::vector<PresetInventory> inventories;
     std::vector<PresetSourceBinding> sourceBindings;
     const int processorId = sn->getNodeId();
@@ -2036,6 +2043,7 @@ String NeuropixThread::handleAgentPresetMessage (const String& jsonMessage)
             return agentError ("preset_apply_in_progress", "Background settings queue is busy.");
     }
 
+    inventoryLease.reset();
     if (! agentPresetHardwareOperation.tryBeginApply())
         return agentError ("preset_apply_in_progress",
                            "Neuropixels hardware operation is already running.");

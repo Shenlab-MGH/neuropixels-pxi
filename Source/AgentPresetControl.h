@@ -84,7 +84,7 @@ struct SourceResolution
 
 class PresetHardwareOperationGate
 {
-    enum class Operation { IDLE, APPLY, REFRESH };
+    enum class Operation { IDLE, APPLY, REFRESH, INVENTORY };
 
 public:
     class Lease
@@ -106,8 +106,10 @@ public:
     bool tryBeginApply();
     bool tryBeginRefresh();
     std::optional<Lease> tryAcquireRefresh();
+    std::optional<Lease> tryAcquireInventory();
     void finishApply();
     void finishRefresh();
+    void finishInventory();
     bool applyInProgress() const;
     bool refreshInProgress() const;
 
@@ -141,6 +143,9 @@ SourceResolution resolvePresetSource (
     const std::vector<PresetSourceBinding>& bindings,
     const std::string& probeId,
     const std::string& expectedSerial);
+std::vector<std::string> np2FourShankSopPresetLabels();
+std::vector<Preset> retainNp2FourShankSopPresets (
+    const std::vector<Preset>& candidates);
 
 class CommittedPresetStateCache
 {
