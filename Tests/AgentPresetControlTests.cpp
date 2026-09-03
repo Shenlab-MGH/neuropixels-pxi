@@ -143,6 +143,22 @@ int main()
                 "preset apply blocks close-open hardware refresh");
     operationGate.finishApply();
 
+    expectTrue (operationGate.tryBeginSettingsWorker(),
+                "ordinary settings worker enters the shared operation domain");
+    expectTrue (! operationGate.tryAcquireInventory().has_value()
+                    && ! operationGate.tryBeginApply()
+                    && ! operationGate.tryBeginRefresh(),
+                "ordinary settings worker excludes inventory agent SET and refresh");
+    expectTrue (operationGate.tryContinueSettingsWorker(),
+                "one GUI settings batch may enqueue multiple probes");
+    operationGate.finishSettingsWorker();
+    {
+        auto inventoryLease = operationGate.tryAcquireInventory();
+        expectTrue (inventoryLease.has_value()
+                        && ! operationGate.tryBeginSettingsWorker(),
+                    "inventory lease prevents a real settings worker start");
+    }
+
     {
         auto inventoryLease = operationGate.tryAcquireInventory();
         expectTrue (inventoryLease.has_value(),
