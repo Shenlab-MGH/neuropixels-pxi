@@ -89,7 +89,10 @@ def main() -> int:
         assert actual is expected, f"deploy matrix mismatch: {(event, ref, publish)} -> {actual}"
 
     contract_step = text.find("    - name: Test agent inventory contract")
+    export_step = text.find("    - name: Test Windows plugin exports")
     deploy_step = text.find("    - name: deploy")
+    assert export_step >= 0, "Windows CI must verify the built plugin exports"
+    assert export_step < contract_step, "plugin exports must pass before standalone contracts"
     assert contract_step >= 0, "Windows CI must run the standalone inventory contract"
     assert contract_step < deploy_step, "inventory contract must pass before deploy"
     contract_commands = text[contract_step:deploy_step]
@@ -97,6 +100,11 @@ def main() -> int:
     assert "cmake --build Build-AgentInventory --config Release" in contract_commands
     assert "ctest --test-dir Build-AgentInventory -C Release" in contract_commands
     assert "--no-tests=error" in contract_commands
+
+    export_commands = text[export_step:contract_step]
+    assert "ctest --test-dir Build -C Release" in export_commands
+    assert "^neuropix_windows_plugin_exports$" in export_commands
+    assert "--no-tests=error" in export_commands
 
     repo = WORKFLOW.parents[2]
     ignored = subprocess.run(

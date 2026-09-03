@@ -71,6 +71,9 @@ jobs:
         cd Build
         msbuild INSTALL.vcxproj -p:Configuration=Release -p:Platform=x64
       shell: cmd
+    - name: Test Windows plugin exports
+      shell: pwsh
+      run: ctest --test-dir Build -C Release -R '^neuropix_windows_plugin_exports$' --output-on-failure --no-tests=error
     - name: Test agent inventory contract
       shell: pwsh
       run: |
