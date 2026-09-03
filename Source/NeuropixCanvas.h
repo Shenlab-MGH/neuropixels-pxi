@@ -186,4 +186,5 @@ public:
 private:
     NeuropixCanvas* canvas;
     ProbeSettings settings;
+    Array<ProbeSettings> settingsBatch;
 };
