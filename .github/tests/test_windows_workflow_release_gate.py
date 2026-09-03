@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ast
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -86,6 +87,34 @@ def main() -> int:
     for event, ref, publish, expected in deploy_matrix:
         actual = evaluate(deploy, event=event, ref=ref, publish=publish)
         assert actual is expected, f"deploy matrix mismatch: {(event, ref, publish)} -> {actual}"
+
+    contract_step = text.find("    - name: Test agent inventory contract")
+    deploy_step = text.find("    - name: deploy")
+    assert contract_step >= 0, "Windows CI must run the standalone inventory contract"
+    assert contract_step < deploy_step, "inventory contract must pass before deploy"
+    contract_commands = text[contract_step:deploy_step]
+    assert "cmake -S Tests -B Build-AgentInventory" in contract_commands
+    assert "cmake --build Build-AgentInventory --config Release" in contract_commands
+    assert "ctest --test-dir Build-AgentInventory -C Release" in contract_commands
+    assert "--no-tests=error" in contract_commands
+
+    repo = WORKFLOW.parents[2]
+    ignored = subprocess.run(
+        ["git", "check-ignore", "--no-index", "Build-AgentInventory/probe.obj"],
+        cwd=repo,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    overmatched = subprocess.run(
+        ["git", "check-ignore", "--no-index", "Build-AgentInventoryScratch/probe.obj"],
+        cwd=repo,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert ignored.returncode == 0, "the standard contract build directory must be ignored"
+    assert overmatched.returncode == 1, "similarly named source paths must not be ignored"
 
     print("Windows workflow release-gate matrix: PASS")
     return 0

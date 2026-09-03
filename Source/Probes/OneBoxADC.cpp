@@ -36,7 +36,7 @@ OneBoxADC::OneBoxADC (Basestation* bs, OneBoxDAC* dac_) : DataSource (bs),
     sample_rate = 30300.5;
 
     sourceType = DataSourceType::ADC;
-    status = SourceStatus::CONNECTED;
+    setStatus (SourceStatus::CONNECTED);
 
     LOGD ("Initializing OneBoxADC");
 

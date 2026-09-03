@@ -71,9 +71,12 @@ jobs:
         cd Build
         msbuild INSTALL.vcxproj -p:Configuration=Release -p:Platform=x64
       shell: cmd
-# TODO: Perform some basic testing before publishing...
-#    - name: test
-#      run: cd build && ctest
+    - name: Test agent inventory contract
+      shell: pwsh
+      run: |
+        cmake -S Tests -B Build-AgentInventory -G "Visual Studio 17 2022" -A x64
+        cmake --build Build-AgentInventory --config Release
+        ctest --test-dir Build-AgentInventory -C Release --output-on-failure --no-tests=error
     - name: deploy
       if: github.event_name == 'workflow_dispatch' && inputs.publish == true && github.ref == 'refs/heads/main'
       env:

@@ -24,6 +24,7 @@
 #ifndef __NEUROPIXCOMPONENTS_H_2C4C2D67__
 #define __NEUROPIXCOMPONENTS_H_2C4C2D67__
 
+#include <atomic>
 #include <DataThreadHeaders.h>
 #include <stdio.h>
 #include <string.h>
@@ -403,13 +404,13 @@ public:
     /** Sets the status (CONNECTING, CONNECTED, etc.) */
     void setStatus (SourceStatus status_)
     {
-        status = status_;
+        status.store (status_, std::memory_order_relaxed);
     }
 
     /** Gets the status of this source */
-    SourceStatus getStatus()
+    SourceStatus getStatus() const
     {
-        return status;
+        return status.load (std::memory_order_relaxed);
     }
 
     /** Basestation for this source */
@@ -427,7 +428,7 @@ public:
     bool isEnabled = true;
 
 protected:
-    SourceStatus status;
+    std::atomic<SourceStatus> status { SourceStatus::DISCONNECTED };
 };
 
 /** 
