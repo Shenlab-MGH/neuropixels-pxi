@@ -235,7 +235,9 @@ public:
     /** Adds a settings object to the background queue */
     bool tryBeginProbeSettingsWorker();
     bool canRunProbeSettingsWorker() const;
+    bool ownsProbeSettingsWorker() const;
     void finishProbeSettingsWorker();
+    void abortProbeSettingsWorker();
     bool updateProbeSettingsQueue (ProbeSettings settings);
     bool updateAgentPresetSettingsQueue (ProbeSettings settings);
 

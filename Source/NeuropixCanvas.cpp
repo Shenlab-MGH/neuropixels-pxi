@@ -427,12 +427,12 @@ void SettingsUpdater::run()
                 const auto queuedSettings = ni->getProbeSettings();
                 if (! canvas->thread->updateProbeSettingsQueue (queuedSettings))
                 {
-                    canvas->thread->finishProbeSettingsWorker();
+                    canvas->thread->abortProbeSettingsWorker();
                     return;
                 }
                 if (! canvas->editor->uiLoader->startThread())
                 {
-                    canvas->thread->finishProbeSettingsWorker();
+                    canvas->thread->abortProbeSettingsWorker();
                     return;
                 }
                 count++;

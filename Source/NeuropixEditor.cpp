@@ -565,6 +565,14 @@ void BackgroundLoader::run()
 {
     LOGC ("Running background thread...");
 
+    const bool ownsSettings = thread->ownsProbeSettingsWorker();
+    struct SettingsOwnerRelease
+    {
+        NeuropixThread* thread;
+        bool active;
+        ~SettingsOwnerRelease() { if (active) thread->finishProbeSettingsWorker(); }
+    } settingsOwnerRelease { thread, ownsSettings };
+
     if (! thread->canRunProbeSettingsWorker())
     {
         LOGC ("Refusing settings worker while agent inventory or hardware operation is active.");
@@ -642,7 +650,7 @@ void NeuropixEditor::initialize (bool signalChainIsLoading)
     }
     uiLoader->signalChainIsLoading = signalChainIsLoading;
     if (! uiLoader->startThread())
-        thread->finishProbeSettingsWorker();
+        thread->abortProbeSettingsWorker();
 
     checkCanvas();
 }

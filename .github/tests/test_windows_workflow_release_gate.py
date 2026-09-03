@@ -130,21 +130,31 @@ def main() -> int:
                              interface.index("void NeuropixInterface::comboBoxChanged")]
     assert update_entry.index("tryBeginProbeSettingsWorker") < update_entry.index("updateProbeSettingsQueue")
     assert update_entry.index("waitForThreadToExit (5000)") < update_entry.index("tryBeginProbeSettingsWorker")
+    assert "abortProbeSettingsWorker" in update_entry
     assert "probe->updateSettings" not in update_entry, "GUI must not mutate ProbeSettings before owning the gate"
 
     canvas = (source / "NeuropixCanvas.cpp").read_text(encoding="utf-8")
     updater_entry = canvas[canvas.index("void SettingsUpdater::run"):]
     assert updater_entry.index("tryBeginProbeSettingsWorker") < updater_entry.index("applyProbeSettings")
     assert updater_entry.index("waitForThreadToExit (5000)") > updater_entry.index("startThread")
+    assert "abortProbeSettingsWorker" in updater_entry
 
     editor = (source / "NeuropixEditor.cpp").read_text(encoding="utf-8")
     initialize_entry = editor[editor.index("void NeuropixEditor::initialize"):
                               editor.index("NeuropixEditor::~NeuropixEditor")]
     assert initialize_entry.index("tryBeginProbeSettingsWorker") < initialize_entry.index("uiLoader->startThread")
+    assert "abortProbeSettingsWorker" in initialize_entry
+
+    loader_entry = editor[editor.index("void BackgroundLoader::run"):
+                          editor.index("void NeuropixEditor::resetCanvas")]
+    assert loader_entry.index("SettingsOwnerRelease") < loader_entry.index("initializeBasestations")
+    assert "finishProbeSettingsWorker" in loader_entry
 
     thread = (source / "NeuropixThread.cpp").read_text(encoding="utf-8")
     assert thread.count("updateAgentPresetSettingsQueue (updated)") == 2
     assert "updateProbeSettingsQueue (updated)" not in thread
+    assert "|| ! probeSettingsUpdateQueue.isEmpty()" in thread
+    assert "probeSettingsUpdateQueue.clear();" in thread
 
     print("Windows workflow release-gate matrix: PASS")
     return 0

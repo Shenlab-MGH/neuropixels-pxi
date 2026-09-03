@@ -661,10 +661,20 @@ NeuropixThread::~NeuropixThread()
 bool NeuropixThread::tryBeginProbeSettingsWorker()
 {
     const ScopedLock stateLock (agentPresetStateMutex);
-    if (agentSettingsWorkerOwner.has_value())
+    if (agentSettingsWorkerOwner.has_value()
+        || ! probeSettingsUpdateQueue.isEmpty()
+        || ! probeSettingsUpdateEpochQueue.isEmpty())
         return false;
     agentSettingsWorkerOwner = agentPresetHardwareOperation.tryBeginSettingsWorker();
     return agentSettingsWorkerOwner.has_value();
+}
+
+bool NeuropixThread::ownsProbeSettingsWorker() const
+{
+    const ScopedLock stateLock (agentPresetStateMutex);
+    return agentSettingsWorkerOwner.has_value()
+           && agentPresetHardwareOperation.isSettingsWorkerOwner (
+               *agentSettingsWorkerOwner);
 }
 
 bool NeuropixThread::canRunProbeSettingsWorker() const
@@ -681,6 +691,19 @@ void NeuropixThread::finishProbeSettingsWorker()
     const ScopedLock stateLock (agentPresetStateMutex);
     if (! agentSettingsWorkerOwner.has_value())
         return;
+    agentPresetHardwareOperation.finishSettingsWorker (*agentSettingsWorkerOwner);
+    agentSettingsWorkerOwner.reset();
+}
+
+void NeuropixThread::abortProbeSettingsWorker()
+{
+    const ScopedLock stateLock (agentPresetStateMutex);
+    if (! agentSettingsWorkerOwner.has_value()
+        || ! agentPresetHardwareOperation.isSettingsWorkerOwner (
+            *agentSettingsWorkerOwner))
+        return;
+    probeSettingsUpdateQueue.clear();
+    probeSettingsUpdateEpochQueue.clear();
     agentPresetHardwareOperation.finishSettingsWorker (*agentSettingsWorkerOwner);
     agentSettingsWorkerOwner.reset();
 }
@@ -814,7 +837,6 @@ void NeuropixThread::applyProbeSettingsQueue()
 
     probeSettingsUpdateQueue.clear();
     probeSettingsUpdateEpochQueue.clear();
-    finishProbeSettingsWorker();
 
     // Show warning if any probes are uncalibrated
     if (uncalibratedProbes.size() > 0 && ! calibrationWarningShown)
@@ -870,6 +892,11 @@ void NeuropixThread::initialize (bool signalChainIsLoading)
     {
         if (! tryBeginProbeSettingsWorker())
             return;
+        struct HeadlessSettingsOwnerRelease
+        {
+            NeuropixThread* thread;
+            ~HeadlessSettingsOwnerRelease() { thread->finishProbeSettingsWorker(); }
+        } settingsOwnerRelease { this };
         if (! initializationComplete)
             initializeBasestations (signalChainIsLoading);
 

@@ -759,7 +759,7 @@ void NeuropixInterface::updateProbeSettingsInBackground()
 
     if (! thread->updateProbeSettingsQueue (settings)
         || ! editor->uiLoader->startThread())
-        thread->finishProbeSettingsWorker();
+        thread->abortProbeSettingsWorker();
 }
 
 void NeuropixInterface::comboBoxChanged (ComboBox* comboBox)
