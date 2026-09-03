@@ -107,12 +107,10 @@ neuropix::agent::PresetInventory presetInventoryForProbe (Probe& probe,
     inventory.probe = { { probe.basestation->slot, probe.headstage->port, probe.dock },
                         probe.info.part_number.toStdString(),
                         std::to_string (probe.info.serial_number) };
-    if (CoreServices::getAcquisitionStatus())
-        inventory.mode = ControlMode::ACQUIRING;
-    else if (probe.getStatus() == SourceStatus::CONNECTED)
-        inventory.mode = ControlMode::IDLE;
-    else
-        inventory.mode = ControlMode::UNKNOWN;
+    inventory.mode = controlModeFromCoreState (
+        CoreServices::getAcquisitionStatus(),
+        CoreServices::getRecordingStatus(),
+        probeStatusFromSource (probe.getStatus()));
     inventory.currentMap = electrodeMapForIndices (probe, probe.settings.selectedElectrode);
     if (probe.type != ProbeType::NP2_1 && probe.type != ProbeType::NP2_4)
         return inventory;

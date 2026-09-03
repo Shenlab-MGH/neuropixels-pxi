@@ -193,6 +193,19 @@ std::string controlModeToString (ControlMode mode)
     return "UNKNOWN";
 }
 
+ControlMode controlModeFromCoreState (bool acquisitionActive,
+                                      bool recordingActive,
+                                      ProbeStatus connectionStatus)
+{
+    if (recordingActive)
+        return ControlMode::RECORDING;
+    if (acquisitionActive)
+        return ControlMode::ACQUIRING;
+    if (connectionStatus == ProbeStatus::CONNECTED)
+        return ControlMode::IDLE;
+    return ControlMode::UNKNOWN;
+}
+
 namespace
 {
 void appendPresetTarget (std::ostringstream& output, const PresetInventory& inventory)
@@ -315,9 +328,7 @@ bool isPresetTargetPublishable (ProbeStatus status,
                                 bool disabled)
 {
     const bool connectedState = status == ProbeStatus::CONNECTED
-                                || status == ProbeStatus::UPDATING
-                                || status == ProbeStatus::ACQUIRING
-                                || status == ProbeStatus::RECORDING;
+                                || status == ProbeStatus::UPDATING;
     return connectedState && valid && presetFamilySupported && ! disabled;
 }
 

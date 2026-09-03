@@ -54,9 +54,6 @@ int main()
                 "replacement probe at same locator cannot inherit committed state");
     expectTrue (isPresetTargetPublishable (ProbeStatus::CONNECTED, true, true, false),
                 "only connected valid enabled probes are publishable");
-    expectTrue (isPresetTargetPublishable (ProbeStatus::ACQUIRING, true, true, false)
-                    && isPresetTargetPublishable (ProbeStatus::RECORDING, true, true, false),
-                "connected acquisition states remain available for read-only inventory");
     expectTrue (isPresetTargetPublishable (ProbeStatus::UPDATING, true, true, false),
                 "UPDATING remains readable when a committed acknowledgment exists");
     expectTrue (! isPresetTargetPublishable (ProbeStatus::DISCONNECTED, true, true, false)
@@ -64,6 +61,19 @@ int main()
                     && ! isPresetTargetPublishable (ProbeStatus::CONNECTED, true, false, false)
                     && ! isPresetTargetPublishable (ProbeStatus::CONNECTED, true, true, true),
                 "disconnected invalid unsupported and disabled probes are omitted");
+
+    expectTrue (controlModeFromCoreState (true, true, ProbeStatus::CONNECTED)
+                    == ControlMode::RECORDING,
+                "authoritative recording state takes precedence over acquisition");
+    expectTrue (controlModeFromCoreState (true, false, ProbeStatus::CONNECTED)
+                    == ControlMode::ACQUIRING,
+                "authoritative acquisition state is reported separately from connection status");
+    expectTrue (controlModeFromCoreState (false, false, ProbeStatus::CONNECTED)
+                    == ControlMode::IDLE,
+                "connected probe with inactive core is idle");
+    expectTrue (controlModeFromCoreState (false, false, ProbeStatus::UPDATING)
+                    == ControlMode::UNKNOWN,
+                "non-connected probe state fails closed when the core is idle");
 
     CommittedPresetStateCache cache;
     const auto cacheKey = stableCommittedStateKey (firstProbe);

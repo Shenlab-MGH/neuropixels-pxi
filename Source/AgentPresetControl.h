@@ -121,6 +121,9 @@ std::string stablePresetId (const std::string& probePartNumber,
 std::string stableCommittedStateKey (const ProbeIdentity& probe);
 std::string canonicalElectrodeMapHash (const ElectrodeMap& map);
 std::string controlModeToString (ControlMode mode);
+ControlMode controlModeFromCoreState (bool acquisitionActive,
+                                      bool recordingActive,
+                                      ProbeStatus connectionStatus);
 std::string serializePresetInventory (const PresetInventory& inventory);
 std::string serializeAgentSuccess (const std::string& resultObjectJson);
 std::string serializeAgentAccepted (const std::string& operationId);
