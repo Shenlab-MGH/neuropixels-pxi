@@ -168,6 +168,12 @@ int main()
         "All Shanks 385-480", "All Shanks 481-576",
         "All Shanks 577-672", "All Shanks 673-768"
     };
+    const std::vector<std::string> expectedSopPresetIds {
+        "np2013:all-shanks-1-96", "np2013:all-shanks-97-192",
+        "np2013:all-shanks-193-288", "np2013:all-shanks-289-384",
+        "np2013:all-shanks-385-480", "np2013:all-shanks-481-576",
+        "np2013:all-shanks-577-672", "np2013:all-shanks-673-768"
+    };
     expectTrue (np2FourShankSopPresetLabels() == expectedSopPresets,
                 "NP2 four-shank inventory pins the existing eight-block SOP order");
     std::vector<Preset> shuffledSopCandidates;
@@ -183,11 +189,10 @@ int main()
     {
         expectEqual (filteredSopPresets[index].label, expectedSopPresets[index],
                      "SOP preset order is stable");
-        expectEqual (filteredSopPresets[index].presetId,
-                     stablePresetId ("NP2013", expectedSopPresets[index]),
+        expectEqual (filteredSopPresets[index].presetId, expectedSopPresetIds[index],
                      "SOP preset id is stable");
         expectEqual (canonicalElectrodeMapHash (filteredSopPresets[index].electrodeMap),
-                     canonicalElectrodeMapHash (bankA),
+                     "sha256:2bdb083f0ab65b51e840c27b7635c0892103161b17fdeb35e97e390ce75113b8",
                      "SOP preset map hash is preserved exactly");
     }
     shuffledSopCandidates.pop_back();
